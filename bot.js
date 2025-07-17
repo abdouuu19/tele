@@ -1,5 +1,6 @@
 const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
+const express = require('express');
 
 // Bot Configuration
 const BOT_TOKEN = process.env.BOT_TOKEN;
@@ -22,36 +23,87 @@ if (GEMINI_KEYS.length === 0) {
     process.exit(1);
 }
 
-// Initialize bot for Railway webhook
-const bot = new TelegramBot(BOT_TOKEN, { polling: false });
-
-// Express server for webhook
-const express = require('express');
+// Initialize Express app first
 const app = express();
 app.use(express.json());
 
-// Webhook endpoint
-app.post(`/webhook/${BOT_TOKEN}`, (req, res) => {
-    bot.processUpdate(req.body);
-    res.sendStatus(200);
-});
+// Initialize bot for Railway webhook
+const bot = new TelegramBot(BOT_TOKEN, { polling: false });
 
 // Health check endpoint
 app.get('/', (req, res) => {
-    res.send('ChatWME Bot is running!');
+    res.json({ 
+        status: 'ok', 
+        message: 'ChatWME Bot is running!',
+        timestamp: new Date().toISOString()
+    });
 });
 
-app.listen(PORT, () => {
+// Webhook endpoint
+app.post(`/webhook/${BOT_TOKEN}`, (req, res) => {
+    try {
+        bot.processUpdate(req.body);
+        res.sendStatus(200);
+    } catch (error) {
+        console.error('❌ Webhook processing error:', error);
+        res.sendStatus(500);
+    }
+});
+
+// Start server
+const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`🌐 Server running on port ${PORT}`);
 });
 
-// Set webhook for Railway
-const WEBHOOK_URL = process.env.RAILWAY_STATIC_URL || process.env.RAILWAY_URL;
-if (WEBHOOK_URL) {
-    bot.setWebHook(`${WEBHOOK_URL}/webhook/${BOT_TOKEN}`)
-        .then(() => console.log('✅ Webhook set successfully'))
-        .catch(err => console.error('❌ Webhook error:', err));
+// Graceful shutdown
+process.on('SIGTERM', () => {
+    console.log('🛑 SIGTERM received, shutting down gracefully...');
+    server.close(() => {
+        console.log('✅ Server closed');
+        process.exit(0);
+    });
+});
+
+process.on('SIGINT', () => {
+    console.log('🛑 SIGINT received, shutting down gracefully...');
+    server.close(() => {
+        console.log('✅ Server closed');
+        process.exit(0);
+    });
+});
+
+// Set webhook for Railway - with better error handling
+async function setupWebhook() {
+    try {
+        const WEBHOOK_URL = process.env.RAILWAY_STATIC_URL || process.env.RAILWAY_URL;
+        
+        if (!WEBHOOK_URL) {
+            console.error('❌ No Railway URL found. Please check your Railway deployment.');
+            return;
+        }
+
+        const webhookUrl = `${WEBHOOK_URL}/webhook/${BOT_TOKEN}`;
+        console.log(`🔗 Setting webhook to: ${webhookUrl}`);
+        
+        await bot.setWebHook(webhookUrl);
+        console.log('✅ Webhook set successfully');
+        
+        // Verify webhook
+        const webhookInfo = await bot.getWebHookInfo();
+        console.log('📋 Webhook info:', {
+            url: webhookInfo.url,
+            has_custom_certificate: webhookInfo.has_custom_certificate,
+            pending_update_count: webhookInfo.pending_update_count
+        });
+        
+    } catch (error) {
+        console.error('❌ Webhook setup error:', error.message);
+        // Don't exit, try to continue
+    }
 }
+
+// Setup webhook after server starts
+setTimeout(setupWebhook, 3000);
 
 // Simple API key rotation
 let currentKeyIndex = 0;
@@ -92,7 +144,7 @@ class UserSession {
     }
 }
 
-// Gemini API request
+// Gemini API request with better error handling
 async function makeGeminiRequest(prompt, retries = 0) {
     const maxRetries = GEMINI_KEYS.length;
     
@@ -110,7 +162,10 @@ async function makeGeminiRequest(prompt, retries = 0) {
                     maxOutputTokens: 1024
                 }
             }, {
-                timeout: 30000
+                timeout: 30000,
+                headers: {
+                    'Content-Type': 'application/json'
+                }
             });
             
             if (response.data.candidates?.[0]?.content?.parts?.[0]?.text) {
@@ -128,11 +183,17 @@ async function makeGeminiRequest(prompt, retries = 0) {
                 continue;
             }
             
+            if (error.response?.status === 400) {
+                console.error('❌ Bad request to Gemini API:', error.response?.data);
+                throw new Error('Invalid request to Gemini API');
+            }
+            
             if (attempt === maxRetries - 1) {
                 throw error;
             }
             
             rotateApiKey();
+            await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second before retry
         }
     }
 }
@@ -221,8 +282,15 @@ async function handleTextMessage(chatId, messageText, userName, messageId) {
     } catch (error) {
         console.error('❌ Error handling message:', error);
         
-        const errorMessage = 'Sorry, I encountered an error. Please try again. / عذراً، حدث خطأ. حاول مرة أخرى.';
-        await bot.sendMessage(chatId, errorMessage);
+        const errorMessage = session?.detectLanguage(messageText) === 'ar' ?
+            'عذراً، حدث خطأ. حاول مرة أخرى.' :
+            'Sorry, I encountered an error. Please try again.';
+        
+        try {
+            await bot.sendMessage(chatId, errorMessage);
+        } catch (sendError) {
+            console.error('❌ Error sending error message:', sendError);
+        }
     }
 }
 
@@ -231,6 +299,8 @@ bot.on('message', async (msg) => {
     const chatId = msg.chat.id;
     const userName = msg.from.first_name || 'Friend';
     const messageId = msg.message_id;
+    
+    console.log(`📨 Message from ${userName} (${chatId}): ${msg.text || 'non-text'}`);
     
     try {
         if (msg.text) {
@@ -242,7 +312,11 @@ bot.on('message', async (msg) => {
         }
     } catch (error) {
         console.error('❌ Error in message handler:', error);
-        await bot.sendMessage(chatId, 'An error occurred. Please try again. / حدث خطأ. حاول مرة أخرى.');
+        try {
+            await bot.sendMessage(chatId, 'An error occurred. Please try again. / حدث خطأ. حاول مرة أخرى.');
+        } catch (sendError) {
+            console.error('❌ Error sending error message:', sendError);
+        }
     }
 });
 
@@ -251,6 +325,8 @@ bot.onText(/\/start/, async (msg) => {
     const chatId = msg.chat.id;
     const userName = msg.from.first_name || 'Friend';
     
+    console.log(`🚀 Start command from ${userName} (${chatId})`);
+    
     const welcomeMessage = `🤖 **مرحباً ${userName}، أنا ChatWME!**\n\n` +
                           `مساعد ذكي يمكنني المحادثة معك بالعربية والإنجليزية 💬\n\n` +
                           `---\n\n` +
@@ -258,14 +334,18 @@ bot.onText(/\/start/, async (msg) => {
                           `An AI assistant that can chat with you in Arabic and English 💬\n\n` +
                           `💡 **أرسل لي أي رسالة وسأجيبك! / Send me any message and I'll respond!**`;
     
-    await bot.sendMessage(chatId, welcomeMessage, {
-        parse_mode: 'Markdown',
-        reply_markup: {
-            inline_keyboard: [
-                [{ text: '👤 Meet Abdou (Creator)', url: 'https://www.facebook.com/abdou.tsu.446062' }]
-            ]
-        }
-    });
+    try {
+        await bot.sendMessage(chatId, welcomeMessage, {
+            parse_mode: 'Markdown',
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '👤 Meet Abdou (Creator)', url: 'https://www.facebook.com/abdou.tsu.446062' }]
+                ]
+            }
+        });
+    } catch (error) {
+        console.error('❌ Error sending start message:', error);
+    }
 });
 
 // Help command
@@ -286,7 +366,11 @@ bot.onText(/\/help/, async (msg) => {
                        `• Ask me anything!\n` +
                        `• I'll respond in your language`;
     
-    await bot.sendMessage(chatId, helpMessage, { parse_mode: 'Markdown' });
+    try {
+        await bot.sendMessage(chatId, helpMessage, { parse_mode: 'Markdown' });
+    } catch (error) {
+        console.error('❌ Error sending help message:', error);
+    }
 });
 
 // Creator command
@@ -300,20 +384,28 @@ bot.onText(/\/creator/, async (msg) => {
                           `**Location:** Algeria\n\n` +
                           `Connect with Abdou on Facebook!`;
     
-    await bot.sendMessage(chatId, creatorMessage, {
-        parse_mode: 'Markdown',
-        reply_markup: {
-            inline_keyboard: [[{
-                text: '📘 Visit Facebook',
-                url: 'https://www.facebook.com/abdou.tsu.446062'
-            }]]
-        }
-    });
+    try {
+        await bot.sendMessage(chatId, creatorMessage, {
+            parse_mode: 'Markdown',
+            reply_markup: {
+                inline_keyboard: [[{
+                    text: '📘 Visit Facebook',
+                    url: 'https://www.facebook.com/abdou.tsu.446062'
+                }]]
+            }
+        });
+    } catch (error) {
+        console.error('❌ Error sending creator message:', error);
+    }
 });
 
 // Error handling
 bot.on('error', (error) => {
     console.error('❌ Bot error:', error);
+});
+
+bot.on('webhook_error', (error) => {
+    console.error('❌ Webhook error:', error);
 });
 
 // Cleanup old sessions every hour
@@ -330,3 +422,5 @@ setInterval(() => {
 console.log('🚀 ChatWME bot started successfully!');
 console.log('🤖 Created by Abdou');
 console.log('✅ Ready for text messages only!');
+console.log(`🔧 Environment: ${process.env.NODE_ENV || 'development'}`);
+console.log(`📊 Available Gemini API keys: ${GEMINI_KEYS.length}`);
