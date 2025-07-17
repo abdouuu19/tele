@@ -1,6 +1,9 @@
+bot.js
+11.30 KB •332 lines
+•
+Formatting may be inconsistent from source
 const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
-const express = require('express');
 
 // Bot Configuration
 const BOT_TOKEN = process.env.BOT_TOKEN;
@@ -27,88 +30,34 @@ if (GEMINI_KEYS.length === 0) {
 const bot = new TelegramBot(BOT_TOKEN, { polling: false });
 
 // Express server for webhook
+const express = require('express');
 const app = express();
 app.use(express.json());
 
-// Enhanced webhook endpoint with better error handling
+// Webhook endpoint
 app.post(`/webhook/${BOT_TOKEN}`, (req, res) => {
-    try {
-        console.log('📨 Received webhook:', JSON.stringify(req.body, null, 2));
-        bot.processUpdate(req.body);
-        res.sendStatus(200);
-    } catch (error) {
-        console.error('❌ Webhook processing error:', error);
-        res.sendStatus(500);
-    }
+    bot.processUpdate(req.body);
+    res.sendStatus(200);
 });
 
 // Health check endpoint
 app.get('/', (req, res) => {
-    res.json({
-        status: 'running',
-        bot: 'ChatWME',
-        timestamp: new Date().toISOString(),
-        sessions: userSessions.size
-    });
+    res.send('ChatWME Bot is running!');
 });
 
-// Webhook info endpoint for debugging
-app.get('/webhook-info', async (req, res) => {
-    try {
-        const info = await bot.getWebhookInfo();
-        res.json(info);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// Start server
-app.listen(PORT, '0.0.0.0', () => {
+app.listen(PORT, () => {
     console.log(`🌐 Server running on port ${PORT}`);
-    setupWebhook();
 });
 
-// Enhanced webhook setup
-async function setupWebhook() {
-    try {
-        // Get Railway URL from environment
-        const WEBHOOK_URL = process.env.RAILWAY_STATIC_URL || 
-                           process.env.RAILWAY_PUBLIC_DOMAIN || 
-                           process.env.RAILWAY_URL;
-        
-        if (!WEBHOOK_URL) {
-            console.error('❌ No Railway URL found in environment variables');
-            console.log('Available env vars:', Object.keys(process.env).filter(key => key.includes('RAILWAY')));
-            return;
-        }
-        
-        console.log('🔗 Using webhook URL:', WEBHOOK_URL);
-        
-        // Delete existing webhook
-        await bot.deleteWebhook();
-        console.log('🗑️ Deleted existing webhook');
-        
-        // Set new webhook
-        const webhookUrl = `${WEBHOOK_URL}/webhook/${BOT_TOKEN}`;
-        await bot.setWebhook(webhookUrl);
-        console.log('✅ Webhook set to:', webhookUrl);
-        
-        // Verify webhook
-        const info = await bot.getWebhookInfo();
-        console.log('📡 Webhook info:', info);
-        
-        if (info.url && info.url.includes(WEBHOOK_URL)) {
-            console.log('✅ Webhook verified successfully');
-        } else {
-            console.error('❌ Webhook verification failed');
-        }
-        
-    } catch (error) {
-        console.error('❌ Webhook setup error:', error);
-    }
+// Set webhook for Railway
+const WEBHOOK_URL = process.env.RAILWAY_STATIC_URL || process.env.RAILWAY_URL;
+if (WEBHOOK_URL) {
+    bot.setWebHook(`${WEBHOOK_URL}/webhook/${BOT_TOKEN}`)
+        .then(() => console.log('✅ Webhook set successfully'))
+        .catch(err => console.error('❌ Webhook error:', err));
 }
 
-// API key rotation
+// Simple API key rotation
 let currentKeyIndex = 0;
 const getCurrentApiKey = () => GEMINI_KEYS[currentKeyIndex];
 const rotateApiKey = () => {
@@ -116,7 +65,7 @@ const rotateApiKey = () => {
     console.log(`🔄 Rotated to API key ${currentKeyIndex + 1}`);
 };
 
-// Enhanced user sessions
+// Simple user sessions
 const userSessions = new Map();
 
 class UserSession {
@@ -124,63 +73,37 @@ class UserSession {
         this.userId = userId;
         this.conversationHistory = [];
         this.lastActivity = Date.now();
-        this.language = null;
-        this.messageCount = 0;
-        this.createdAt = Date.now();
     }
 
     addMessage(role, content) {
-        this.conversationHistory.push({ 
-            role, 
-            content, 
-            timestamp: Date.now() 
-        });
-        
-        // Keep last 8 messages for better context
-        if (this.conversationHistory.length > 8) {
-            this.conversationHistory = this.conversationHistory.slice(-8);
+        this.conversationHistory.push({ role, content });
+        // Keep only last 6 messages
+        if (this.conversationHistory.length > 6) {
+            this.conversationHistory = this.conversationHistory.slice(-6);
         }
-        
         this.lastActivity = Date.now();
-        this.messageCount++;
-    }
-
-    detectLanguage(text) {
-        const arabicPattern = /[\u0600-\u06FF]/;
-        const detected = arabicPattern.test(text) ? 'ar' : 'en';
-        
-        // Set user's preferred language on first detection
-        if (!this.language) {
-            this.language = detected;
-            console.log(`🌐 User ${this.userId} language set to: ${detected}`);
-        }
-        
-        return this.language;
     }
 
     getContext() {
         return this.conversationHistory
-            .slice(-6)
             .map(msg => `${msg.role}: ${msg.content}`)
             .join('\n');
     }
 
-    clearHistory() {
-        this.conversationHistory = [];
-        console.log(`🧹 Cleared history for user ${this.userId}`);
+    detectLanguage(text) {
+        const arabicPattern = /[\u0600-\u06FF]/;
+        return arabicPattern.test(text) ? 'ar' : 'en';
     }
 }
 
-// Enhanced Gemini API request with better error handling
-async function makeGeminiRequest(prompt) {
-    const maxRetries = GEMINI_KEYS.length * 2; // More retries
+// Gemini API request
+async function makeGeminiRequest(prompt, retries = 0) {
+    const maxRetries = GEMINI_KEYS.length;
     
     for (let attempt = 0; attempt < maxRetries; attempt++) {
         try {
             const apiKey = getCurrentApiKey();
             const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
-            
-            console.log(`🤖 Making Gemini request (attempt ${attempt + 1})`);
             
             const response = await axios.post(url, {
                 contents: [{
@@ -188,36 +111,14 @@ async function makeGeminiRequest(prompt) {
                 }],
                 generationConfig: {
                     temperature: 0.7,
-                    maxOutputTokens: 1024,
-                    topK: 40,
-                    topP: 0.95
-                },
-                safetySettings: [
-                    {
-                        category: "HARM_CATEGORY_HARASSMENT",
-                        threshold: "BLOCK_MEDIUM_AND_ABOVE"
-                    },
-                    {
-                        category: "HARM_CATEGORY_HATE_SPEECH",
-                        threshold: "BLOCK_MEDIUM_AND_ABOVE"
-                    }
-                ]
-            }, {
-                timeout: 30000,
-                headers: {
-                    'Content-Type': 'application/json'
+                    maxOutputTokens: 1024
                 }
+            }, {
+                timeout: 30000
             });
             
-            if (response.data.candidates && 
-                response.data.candidates[0] && 
-                response.data.candidates[0].content && 
-                response.data.candidates[0].content.parts && 
-                response.data.candidates[0].content.parts[0]) {
-                
-                const result = response.data.candidates[0].content.parts[0].text.trim();
-                console.log('✅ Gemini response received');
-                return result;
+            if (response.data.candidates?.[0]?.content?.parts?.[0]?.text) {
+                return response.data.candidates[0].content.parts[0].text;
             }
             
             throw new Error('No valid response from Gemini');
@@ -225,38 +126,22 @@ async function makeGeminiRequest(prompt) {
         } catch (error) {
             console.error(`❌ Error with API key ${currentKeyIndex + 1}:`, error.message);
             
-            // Handle specific errors
-            if (error.response) {
-                const status = error.response.status;
-                const data = error.response.data;
-                
-                console.error(`HTTP ${status}:`, data);
-                
-                if (status === 429) {
-                    console.log('⚠️ Rate limit hit, rotating key...');
-                    rotateApiKey();
-                    continue;
-                } else if (status === 400) {
-                    console.error('❌ Bad request to Gemini API');
-                    throw new Error('Invalid request to AI service');
-                } else if (status === 403) {
-                    console.error('❌ API key invalid or quota exceeded');
-                    rotateApiKey();
-                    continue;
-                }
+            if (error.response?.status === 429) {
+                console.log('⚠️ Rate limit hit, rotating key...');
+                rotateApiKey();
+                continue;
             }
             
             if (attempt === maxRetries - 1) {
-                throw new Error('All API keys failed or quota exceeded');
+                throw error;
             }
             
             rotateApiKey();
-            await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
         }
     }
 }
 
-// Generate prompt
+// Generate prompt based on user message
 function generatePrompt(messageText, userName, session) {
     const language = session.detectLanguage(messageText);
     const context = session.getContext();
@@ -264,14 +149,13 @@ function generatePrompt(messageText, userName, session) {
     const systemPrompt = `You are ChatWME, an AI assistant created by Abdou.
 
 PERSONALITY:
-- Be helpful, friendly, and conversational
-- Give direct, clear answers
-- Use natural language with appropriate emojis
-- Be culturally aware, especially for Algerian context
+- Friendly and helpful
+- Culturally aware (especially Algerian context)
+- Conversational and engaging
 
 LANGUAGE:
-- User's preferred language: ${language === 'ar' ? 'Arabic/Algerian Darija' : 'English'}
-- ALWAYS respond in ${language === 'ar' ? 'Arabic' : 'English'} only
+- Respond in ${language === 'ar' ? 'Arabic/Algerian Darija' : 'English'}
+- Use emojis naturally
 - Be concise but informative
 
 CONTEXT:
@@ -280,242 +164,14 @@ ${context ? `Previous conversation:\n${context}\n` : ''}
 USER: ${userName}
 MESSAGE: ${messageText}
 
-Respond naturally in ${language === 'ar' ? 'Arabic' : 'English'}:`;
+Respond appropriately:`;
 
     return systemPrompt;
 }
 
-// Start command
-bot.onText(/\/start/, async (msg) => {
-    const chatId = msg.chat.id;
-    const userName = msg.from.first_name || 'Friend';
-    
-    console.log(`🚀 Start command from user ${chatId}`);
-    
+// Handle text messages
+async function handleTextMessage(chatId, messageText, userName, messageId) {
     try {
-        // Create or get session
-        let session = userSessions.get(chatId);
-        if (!session) {
-            session = new UserSession(chatId);
-            userSessions.set(chatId, session);
-        }
-        
-        // Detect language preference
-        const language = msg.from.language_code === 'ar' ? 'ar' : 'en';
-        session.language = language;
-        
-        const welcomeMessage = language === 'ar' ?
-            `🤖 مرحباً ${userName}، أنا ChatWME!\n\n` +
-            `مساعد ذكي تم إنشاؤه من قبل عبدو 👨‍💻\n\n` +
-            `أستطيع:\n` +
-            `💬 المحادثة الطبيعية\n` +
-            `🧠 تذكر المحادثة السابقة\n` +
-            `📚 الإجابة على الأسئلة\n\n` +
-            `الأوامر:\n` +
-            `/help - المساعدة\n` +
-            `/clear - مسح المحادثة\n` +
-            `/stats - الإحصائيات\n` +
-            `/creator - معلومات المطور\n\n` +
-            `أرسل لي أي رسالة! 🚀` :
-            
-            `🤖 Hello ${userName}, I'm ChatWME!\n\n` +
-            `An AI assistant created by Abdou 👨‍💻\n\n` +
-            `I can:\n` +
-            `💬 Natural conversation\n` +
-            `🧠 Remember previous conversation\n` +
-            `📚 Answer questions\n\n` +
-            `Commands:\n` +
-            `/help - Show help\n` +
-            `/clear - Clear conversation\n` +
-            `/stats - Show statistics\n` +
-            `/creator - Creator info\n\n` +
-            `Send me any message! 🚀`;
-        
-        await bot.sendMessage(chatId, welcomeMessage, {
-            reply_markup: {
-                inline_keyboard: [
-                    [{ text: '👤 Meet Abdou', url: 'https://www.facebook.com/abdou.tsu.446062' }]
-                ]
-            }
-        });
-        
-        console.log(`✅ Start message sent to user ${chatId}`);
-        
-    } catch (error) {
-        console.error('❌ Error in start command:', error);
-        await bot.sendMessage(chatId, 'Error starting bot. Please try again.');
-    }
-});
-
-// Help command
-bot.onText(/\/help/, async (msg) => {
-    const chatId = msg.chat.id;
-    const session = userSessions.get(chatId);
-    const language = session && session.language ? session.language : 'en';
-    
-    try {
-        const helpMessage = language === 'ar' ?
-            `🆘 مساعدة ChatWME\n\n` +
-            `الأوامر:\n` +
-            `• /start - بدء المحادثة\n` +
-            `• /help - عرض المساعدة\n` +
-            `• /clear - مسح المحادثة\n` +
-            `• /stats - الإحصائيات\n` +
-            `• /creator - معلومات المطور\n\n` +
-            `المميزات:\n` +
-            `✅ محادثة طبيعية\n` +
-            `✅ تذكر السياق\n` +
-            `✅ إجابات مباشرة\n\n` +
-            `تحدث معي بشكل طبيعي!` :
-            
-            `🆘 ChatWME Help\n\n` +
-            `Commands:\n` +
-            `• /start - Start conversation\n` +
-            `• /help - Show help\n` +
-            `• /clear - Clear conversation\n` +
-            `• /stats - Show statistics\n` +
-            `• /creator - Creator info\n\n` +
-            `Features:\n` +
-            `✅ Natural conversation\n` +
-            `✅ Context memory\n` +
-            `✅ Direct answers\n\n` +
-            `Talk to me naturally!`;
-        
-        await bot.sendMessage(chatId, helpMessage);
-        
-    } catch (error) {
-        console.error('❌ Error in help command:', error);
-        await bot.sendMessage(chatId, 'Error showing help.');
-    }
-});
-
-// Clear command
-bot.onText(/\/clear/, async (msg) => {
-    const chatId = msg.chat.id;
-    const session = userSessions.get(chatId);
-    
-    try {
-        if (session) {
-            session.clearHistory();
-            const language = session.language || 'en';
-            
-            const clearMessage = language === 'ar' ?
-                `🧹 تم مسح تاريخ المحادثة!\n\nيمكنك بدء محادثة جديدة 🚀` :
-                `🧹 Conversation history cleared!\n\nYou can start fresh 🚀`;
-            
-            await bot.sendMessage(chatId, clearMessage);
-        } else {
-            await bot.sendMessage(chatId, 'No conversation to clear.');
-        }
-        
-    } catch (error) {
-        console.error('❌ Error in clear command:', error);
-        await bot.sendMessage(chatId, 'Error clearing conversation.');
-    }
-});
-
-// Stats command
-bot.onText(/\/stats/, async (msg) => {
-    const chatId = msg.chat.id;
-    const session = userSessions.get(chatId);
-    
-    try {
-        if (session) {
-            const language = session.language || 'en';
-            const uptime = Math.floor((Date.now() - session.createdAt) / 1000);
-            const hours = Math.floor(uptime / 3600);
-            const minutes = Math.floor((uptime % 3600) / 60);
-            
-            const statsMessage = language === 'ar' ?
-                `📊 الإحصائيات\n\n` +
-                `💬 الرسائل: ${session.messageCount}\n` +
-                `🕐 المدة: ${hours}س ${minutes}دق\n` +
-                `🌐 اللغة: ${session.language === 'ar' ? 'العربية' : 'الإنجليزية'}\n` +
-                `🧠 الذاكرة: ${session.conversationHistory.length} رسالة\n` +
-                `📱 الجلسات النشطة: ${userSessions.size}` :
-                
-                `📊 Statistics\n\n` +
-                `💬 Messages: ${session.messageCount}\n` +
-                `🕐 Duration: ${hours}h ${minutes}m\n` +
-                `🌐 Language: ${session.language === 'ar' ? 'Arabic' : 'English'}\n` +
-                `🧠 Memory: ${session.conversationHistory.length} messages\n` +
-                `📱 Active sessions: ${userSessions.size}`;
-            
-            await bot.sendMessage(chatId, statsMessage);
-        } else {
-            await bot.sendMessage(chatId, 'No statistics available.');
-        }
-        
-    } catch (error) {
-        console.error('❌ Error in stats command:', error);
-        await bot.sendMessage(chatId, 'Error showing statistics.');
-    }
-});
-
-// Creator command
-bot.onText(/\/creator/, async (msg) => {
-    const chatId = msg.chat.id;
-    const session = userSessions.get(chatId);
-    const language = session && session.language ? session.language : 'en';
-    
-    try {
-        const creatorMessage = language === 'ar' ?
-            `👨‍💻 معلومات المطور\n\n` +
-            `الاسم: عبدو\n` +
-            `البوت: ChatWME\n` +
-            `المهارات: تطوير الذكاء الاصطناعي\n` +
-            `الموقع: الجزائر 🇩🇿\n\n` +
-            `تواصل معه على الفيسبوك!` :
-            
-            `👨‍💻 Creator Information\n\n` +
-            `Name: Abdou\n` +
-            `Bot: ChatWME\n` +
-            `Skills: AI Development\n` +
-            `Location: Algeria 🇩🇿\n\n` +
-            `Connect with him on Facebook!`;
-        
-        await bot.sendMessage(chatId, creatorMessage, {
-            reply_markup: {
-                inline_keyboard: [[{
-                    text: '📘 Facebook',
-                    url: 'https://www.facebook.com/abdou.tsu.446062'
-                }]]
-            }
-        });
-        
-    } catch (error) {
-        console.error('❌ Error in creator command:', error);
-        await bot.sendMessage(chatId, 'Error showing creator info.');
-    }
-});
-
-// Handle all other messages
-bot.on('message', async (msg) => {
-    const chatId = msg.chat.id;
-    const userName = msg.from.first_name || 'Friend';
-    const messageId = msg.message_id;
-    
-    console.log(`📨 Message from user ${chatId}: ${msg.text}`);
-    
-    try {
-        // Skip if it's a command
-        if (msg.text && msg.text.startsWith('/')) {
-            return;
-        }
-        
-        // Handle only text messages
-        if (!msg.text) {
-            const session = userSessions.get(chatId);
-            const language = session && session.language ? session.language : 'en';
-            
-            const notSupportedMessage = language === 'ar' ?
-                'أعالج الرسائل النصية فقط. أرسل رسالة نصية! 📝' :
-                'I only process text messages. Send a text message! 📝';
-            
-            await bot.sendMessage(chatId, notSupportedMessage);
-            return;
-        }
-        
         // Get or create user session
         let session = userSessions.get(chatId);
         if (!session) {
@@ -524,10 +180,33 @@ bot.on('message', async (msg) => {
         }
         
         // Add user message to history
-        session.addMessage('user', msg.text);
+        session.addMessage('user', messageText);
+        
+        // Handle creator queries
+        const creatorQueries = [
+            'who made you', 'who created you', 'your creator', 'developer',
+            'من صنعك', 'من عملك', 'شكون صنعك', 'مطورك'
+        ];
+        
+        if (creatorQueries.some(query => messageText.toLowerCase().includes(query))) {
+            const creatorMessage = session.detectLanguage(messageText) === 'ar' ?
+                `👨‍💻 تم إنشائي من قبل **عبدو**!\n\nمطور موهوب قام ببنائي لمساعدتك. يمكنك زيارة صفحته على Facebook! 🚀` :
+                `👨‍💻 I was created by **Abdou**!\n\nA talented developer who built me to help you. You can visit his Facebook page! 🚀`;
+            
+            await bot.sendMessage(chatId, creatorMessage, {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [[{
+                        text: '👤 Visit Abdou\'s Facebook',
+                        url: 'https://www.facebook.com/abdou.tsu.446062'
+                    }]]
+                }
+            });
+            return;
+        }
         
         // Generate prompt and get response
-        const prompt = generatePrompt(msg.text, userName, session);
+        const prompt = generatePrompt(messageText, userName, session);
         
         // Send typing indicator
         await bot.sendChatAction(chatId, 'typing');
@@ -543,60 +222,115 @@ bot.on('message', async (msg) => {
             reply_to_message_id: messageId
         });
         
-        console.log(`✅ Response sent to user ${chatId}`);
-        
     } catch (error) {
         console.error('❌ Error handling message:', error);
         
-        const session = userSessions.get(chatId);
-        const language = session && session.language ? session.language : 'en';
-        
-        const errorMessage = language === 'ar' ?
-            'عذراً، حدث خطأ. حاول مرة أخرى 🔄' :
-            'Sorry, error occurred. Try again 🔄';
-        
+        const errorMessage = 'Sorry, I encountered an error. Please try again. / عذراً، حدث خطأ. حاول مرة أخرى.';
         await bot.sendMessage(chatId, errorMessage);
+    }
+}
+
+// Handle all messages
+bot.on('message', async (msg) => {
+    const chatId = msg.chat.id;
+    const userName = msg.from.first_name || 'Friend';
+    const messageId = msg.message_id;
+    
+    try {
+        if (msg.text) {
+            await handleTextMessage(chatId, msg.text, userName, messageId);
+        } else {
+            // Handle non-text messages
+            const notSupportedMessage = 'I only process text messages for now. Please send me a text message! / أعالج الرسائل النصية فقط حالياً. أرسل لي رسالة نصية!';
+            await bot.sendMessage(chatId, notSupportedMessage);
+        }
+    } catch (error) {
+        console.error('❌ Error in message handler:', error);
+        await bot.sendMessage(chatId, 'An error occurred. Please try again. / حدث خطأ. حاول مرة أخرى.');
     }
 });
 
-// Enhanced error handling
+// Start command
+bot.onText(/\/start/, async (msg) => {
+    const chatId = msg.chat.id;
+    const userName = msg.from.first_name || 'Friend';
+    
+    const welcomeMessage = `🤖 **مرحباً ${userName}، أنا ChatWME!**\n\n` +
+                          `مساعد ذكي يمكنني المحادثة معك بالعربية والإنجليزية 💬\n\n` +
+                          `---\n\n` +
+                          `🤖 **Hello ${userName}, I'm ChatWME!**\n\n` +
+                          `An AI assistant that can chat with you in Arabic and English 💬\n\n` +
+                          `💡 **أرسل لي أي رسالة وسأجيبك! / Send me any message and I'll respond!**`;
+    
+    await bot.sendMessage(chatId, welcomeMessage, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+            inline_keyboard: [
+                [{ text: '👤 Meet Abdou (Creator)', url: 'https://www.facebook.com/abdou.tsu.446062' }]
+            ]
+        }
+    });
+});
+
+// Help command
+bot.onText(/\/help/, async (msg) => {
+    const chatId = msg.chat.id;
+    
+    const helpMessage = `🆘 **ChatWME Help**\n\n` +
+                       `**Commands:**\n` +
+                       `• /start - Start conversation\n` +
+                       `• /help - Show this help\n` +
+                       `• /creator - Creator info\n\n` +
+                       `**What I can do:**\n` +
+                       `✅ Chat in Arabic and English\n` +
+                       `✅ Remember conversation context\n` +
+                       `✅ Understand Algerian Darija\n\n` +
+                       `**Tips:**\n` +
+                       `• Write in any language\n` +
+                       `• Ask me anything!\n` +
+                       `• I'll respond in your language`;
+    
+    await bot.sendMessage(chatId, helpMessage, { parse_mode: 'Markdown' });
+});
+
+// Creator command
+bot.onText(/\/creator/, async (msg) => {
+    const chatId = msg.chat.id;
+    
+    const creatorMessage = `👨‍💻 **Creator Information**\n\n` +
+                          `**Name:** Abdou\n` +
+                          `**Bot:** ChatWME\n` +
+                          `**Skills:** AI Development, Telegram Bots\n` +
+                          `**Location:** Algeria\n\n` +
+                          `Connect with Abdou on Facebook!`;
+    
+    await bot.sendMessage(chatId, creatorMessage, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+            inline_keyboard: [[{
+                text: '📘 Visit Facebook',
+                url: 'https://www.facebook.com/abdou.tsu.446062'
+            }]]
+        }
+    });
+});
+
+// Error handling
 bot.on('error', (error) => {
     console.error('❌ Bot error:', error);
 });
 
-bot.on('polling_error', (error) => {
-    console.error('❌ Polling error:', error);
-});
-
-// Cleanup old sessions
+// Cleanup old sessions every hour
 setInterval(() => {
     const now = Date.now();
-    let cleanedCount = 0;
-    
     for (const [chatId, session] of userSessions.entries()) {
         if (now - session.lastActivity > 3600000) { // 1 hour
             userSessions.delete(chatId);
-            cleanedCount++;
         }
     }
-    
-    if (cleanedCount > 0) {
-        console.log(`🧹 Cleaned ${cleanedCount} sessions. Active: ${userSessions.size}`);
-    }
-}, 1800000); // 30 minutes
+    console.log(`🧹 Cleaned up old sessions. Active sessions: ${userSessions.size}`);
+}, 3600000);
 
-// Graceful shutdown
-process.on('SIGINT', async () => {
-    console.log('🛑 Shutting down gracefully...');
-    try {
-        await bot.deleteWebhook();
-        console.log('🗑️ Webhook deleted');
-    } catch (error) {
-        console.error('❌ Error during shutdown:', error);
-    }
-    process.exit(0);
-});
-
-console.log('🚀 ChatWME bot started!');
+console.log('🚀 ChatWME bot started successfully!');
 console.log('🤖 Created by Abdou');
-console.log('✅ Ready for messages!');
+console.log('✅ Ready for text messages only!');
