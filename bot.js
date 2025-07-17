@@ -1,5 +1,6 @@
 const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
+const express = require('express');
 
 // Bot Configuration
 const BOT_TOKEN = process.env.BOT_TOKEN;
@@ -26,31 +27,85 @@ if (GEMINI_KEYS.length === 0) {
 const bot = new TelegramBot(BOT_TOKEN, { polling: false });
 
 // Express server for webhook
-const express = require('express');
 const app = express();
 app.use(express.json());
 
-// Webhook endpoint
+// Enhanced webhook endpoint with better error handling
 app.post(`/webhook/${BOT_TOKEN}`, (req, res) => {
-    bot.processUpdate(req.body);
-    res.sendStatus(200);
+    try {
+        console.log('📨 Received webhook:', JSON.stringify(req.body, null, 2));
+        bot.processUpdate(req.body);
+        res.sendStatus(200);
+    } catch (error) {
+        console.error('❌ Webhook processing error:', error);
+        res.sendStatus(500);
+    }
 });
 
 // Health check endpoint
 app.get('/', (req, res) => {
-    res.send('ChatWME Bot is running! 🤖');
+    res.json({
+        status: 'running',
+        bot: 'ChatWME',
+        timestamp: new Date().toISOString(),
+        sessions: userSessions.size
+    });
 });
 
-app.listen(PORT, () => {
+// Webhook info endpoint for debugging
+app.get('/webhook-info', async (req, res) => {
+    try {
+        const info = await bot.getWebhookInfo();
+        res.json(info);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Start server
+app.listen(PORT, '0.0.0.0', () => {
     console.log(`🌐 Server running on port ${PORT}`);
+    setupWebhook();
 });
 
-// Set webhook for Railway
-const WEBHOOK_URL = process.env.RAILWAY_STATIC_URL || process.env.RAILWAY_URL;
-if (WEBHOOK_URL) {
-    bot.setWebHook(`${WEBHOOK_URL}/webhook/${BOT_TOKEN}`)
-        .then(() => console.log('✅ Webhook set successfully'))
-        .catch(err => console.error('❌ Webhook error:', err));
+// Enhanced webhook setup
+async function setupWebhook() {
+    try {
+        // Get Railway URL from environment
+        const WEBHOOK_URL = process.env.RAILWAY_STATIC_URL || 
+                           process.env.RAILWAY_PUBLIC_DOMAIN || 
+                           process.env.RAILWAY_URL;
+        
+        if (!WEBHOOK_URL) {
+            console.error('❌ No Railway URL found in environment variables');
+            console.log('Available env vars:', Object.keys(process.env).filter(key => key.includes('RAILWAY')));
+            return;
+        }
+        
+        console.log('🔗 Using webhook URL:', WEBHOOK_URL);
+        
+        // Delete existing webhook
+        await bot.deleteWebhook();
+        console.log('🗑️ Deleted existing webhook');
+        
+        // Set new webhook
+        const webhookUrl = `${WEBHOOK_URL}/webhook/${BOT_TOKEN}`;
+        await bot.setWebhook(webhookUrl);
+        console.log('✅ Webhook set to:', webhookUrl);
+        
+        // Verify webhook
+        const info = await bot.getWebhookInfo();
+        console.log('📡 Webhook info:', info);
+        
+        if (info.url && info.url.includes(WEBHOOK_URL)) {
+            console.log('✅ Webhook verified successfully');
+        } else {
+            console.error('❌ Webhook verification failed');
+        }
+        
+    } catch (error) {
+        console.error('❌ Webhook setup error:', error);
+    }
 }
 
 // API key rotation
@@ -116,14 +171,16 @@ class UserSession {
     }
 }
 
-// Gemini API request
+// Enhanced Gemini API request with better error handling
 async function makeGeminiRequest(prompt) {
-    const maxRetries = GEMINI_KEYS.length;
+    const maxRetries = GEMINI_KEYS.length * 2; // More retries
     
     for (let attempt = 0; attempt < maxRetries; attempt++) {
         try {
             const apiKey = getCurrentApiKey();
             const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+            
+            console.log(`🤖 Making Gemini request (attempt ${attempt + 1})`);
             
             const response = await axios.post(url, {
                 contents: [{
@@ -131,14 +188,36 @@ async function makeGeminiRequest(prompt) {
                 }],
                 generationConfig: {
                     temperature: 0.7,
-                    maxOutputTokens: 1024
-                }
+                    maxOutputTokens: 1024,
+                    topK: 40,
+                    topP: 0.95
+                },
+                safetySettings: [
+                    {
+                        category: "HARM_CATEGORY_HARASSMENT",
+                        threshold: "BLOCK_MEDIUM_AND_ABOVE"
+                    },
+                    {
+                        category: "HARM_CATEGORY_HATE_SPEECH",
+                        threshold: "BLOCK_MEDIUM_AND_ABOVE"
+                    }
+                ]
             }, {
-                timeout: 30000
+                timeout: 30000,
+                headers: {
+                    'Content-Type': 'application/json'
+                }
             });
             
-            if (response.data.candidates && response.data.candidates[0] && response.data.candidates[0].content && response.data.candidates[0].content.parts && response.data.candidates[0].content.parts[0]) {
-                return response.data.candidates[0].content.parts[0].text.trim();
+            if (response.data.candidates && 
+                response.data.candidates[0] && 
+                response.data.candidates[0].content && 
+                response.data.candidates[0].content.parts && 
+                response.data.candidates[0].content.parts[0]) {
+                
+                const result = response.data.candidates[0].content.parts[0].text.trim();
+                console.log('✅ Gemini response received');
+                return result;
             }
             
             throw new Error('No valid response from Gemini');
@@ -146,17 +225,33 @@ async function makeGeminiRequest(prompt) {
         } catch (error) {
             console.error(`❌ Error with API key ${currentKeyIndex + 1}:`, error.message);
             
-            if (error.response && error.response.status === 429) {
-                console.log('⚠️ Rate limit hit, rotating key...');
-                rotateApiKey();
-                continue;
+            // Handle specific errors
+            if (error.response) {
+                const status = error.response.status;
+                const data = error.response.data;
+                
+                console.error(`HTTP ${status}:`, data);
+                
+                if (status === 429) {
+                    console.log('⚠️ Rate limit hit, rotating key...');
+                    rotateApiKey();
+                    continue;
+                } else if (status === 400) {
+                    console.error('❌ Bad request to Gemini API');
+                    throw new Error('Invalid request to AI service');
+                } else if (status === 403) {
+                    console.error('❌ API key invalid or quota exceeded');
+                    rotateApiKey();
+                    continue;
+                }
             }
             
             if (attempt === maxRetries - 1) {
-                throw error;
+                throw new Error('All API keys failed or quota exceeded');
             }
             
             rotateApiKey();
+            await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
         }
     }
 }
@@ -194,6 +289,8 @@ Respond naturally in ${language === 'ar' ? 'Arabic' : 'English'}:`;
 bot.onText(/\/start/, async (msg) => {
     const chatId = msg.chat.id;
     const userName = msg.from.first_name || 'Friend';
+    
+    console.log(`🚀 Start command from user ${chatId}`);
     
     try {
         // Create or get session
@@ -241,6 +338,8 @@ bot.onText(/\/start/, async (msg) => {
                 ]
             }
         });
+        
+        console.log(`✅ Start message sent to user ${chatId}`);
         
     } catch (error) {
         console.error('❌ Error in start command:', error);
@@ -396,6 +495,8 @@ bot.on('message', async (msg) => {
     const userName = msg.from.first_name || 'Friend';
     const messageId = msg.message_id;
     
+    console.log(`📨 Message from user ${chatId}: ${msg.text}`);
+    
     try {
         // Skip if it's a command
         if (msg.text && msg.text.startsWith('/')) {
@@ -442,6 +543,8 @@ bot.on('message', async (msg) => {
             reply_to_message_id: messageId
         });
         
+        console.log(`✅ Response sent to user ${chatId}`);
+        
     } catch (error) {
         console.error('❌ Error handling message:', error);
         
@@ -456,9 +559,13 @@ bot.on('message', async (msg) => {
     }
 });
 
-// Error handling
+// Enhanced error handling
 bot.on('error', (error) => {
     console.error('❌ Bot error:', error);
+});
+
+bot.on('polling_error', (error) => {
+    console.error('❌ Polling error:', error);
 });
 
 // Cleanup old sessions
@@ -477,6 +584,18 @@ setInterval(() => {
         console.log(`🧹 Cleaned ${cleanedCount} sessions. Active: ${userSessions.size}`);
     }
 }, 1800000); // 30 minutes
+
+// Graceful shutdown
+process.on('SIGINT', async () => {
+    console.log('🛑 Shutting down gracefully...');
+    try {
+        await bot.deleteWebhook();
+        console.log('🗑️ Webhook deleted');
+    } catch (error) {
+        console.error('❌ Error during shutdown:', error);
+    }
+    process.exit(0);
+});
 
 console.log('🚀 ChatWME bot started!');
 console.log('🤖 Created by Abdou');
