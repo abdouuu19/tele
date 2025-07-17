@@ -1,0 +1,17 @@
+{
+  "name": "chatwme-bot",
+  "version": "1.0.0",
+  "description": "ChatWME - Smart Telegram Bot by Abdou",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js"
+  },
+  "dependencies": {
+    "node-telegram-bot-api": "^0.61.0",
+    "axios": "^1.6.0",
+    "form-data": "^4.0.0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}
