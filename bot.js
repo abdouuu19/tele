@@ -30,19 +30,33 @@ if (GEMINI_KEYS.length === 0) {
 
 // Initialize bot with Railway-compatible settings
 const bot = new TelegramBot(BOT_TOKEN, { 
-    polling: RAILWAY_ENVIRONMENT === 'production' ? false : true,
-    webHook: RAILWAY_ENVIRONMENT === 'production' ? true : false
+    polling: RAILWAY_ENVIRONMENT === 'development' ? true : false
 });
 
-// For Railway deployment, set up webhook
+// For Railway deployment, set up webhook with Express server
 if (RAILWAY_ENVIRONMENT === 'production') {
+    const express = require('express');
+    const app = express();
+    
+    app.use(express.json());
+    
+    // Webhook endpoint
+    app.post(`/bot${BOT_TOKEN}`, (req, res) => {
+        bot.processUpdate(req.body);
+        res.sendStatus(200);
+    });
+    
+    app.listen(PORT, () => {
+        console.log(`🌐 Express server running on port ${PORT}`);
+    });
+    
+    // Set webhook
     const url = process.env.RAILWAY_STATIC_URL || process.env.RAILWAY_URL;
     if (url) {
         bot.setWebHook(`${url}/bot${BOT_TOKEN}`);
         console.log(`🌐 Webhook set for Railway: ${url}/bot${BOT_TOKEN}`);
     }
 }
-
 // Enhanced global variables
 let currentKeyIndex = 0;
 let rateLimitResetTime = {};
