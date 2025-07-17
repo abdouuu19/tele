@@ -1,7 +1,3 @@
-bot.js
-11.30 KB •332 lines
-•
-Formatting may be inconsistent from source
 const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
 
