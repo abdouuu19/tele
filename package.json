@@ -1,0 +1,33 @@
+{
+  "name": "chatwme-bot",
+  "version": "1.0.0",
+  "description": "ChatWME - Intelligent Telegram Bot with Gemini AI",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js",
+    "dev": "nodemon bot.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "telegram",
+    "bot",
+    "ai",
+    "gemini",
+    "chatbot",
+    "algeria"
+  ],
+  "author": "Abdou",
+  "license": "MIT",
+  "dependencies": {
+    "node-telegram-bot-api": "^0.66.0",
+    "axios": "^1.7.2",
+    "form-data": "^4.0.0",
+    "crypto": "^1.0.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
