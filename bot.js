@@ -155,7 +155,8 @@ async function makeGeminiRequest(prompt, retries = 0) {
 
 // Generate prompt based on user message
 function generatePrompt(messageText, userName, session) {
-    const language = session.detectLanguage(messageText);
+    const language = session.preferredLanguage === 'auto' ? 
+        session.detectLanguage(messageText) : session.preferredLanguage;
     const context = session.getContext();
     
     const systemPrompt = `You are ChatWME, an AI assistant created by Abdou.
@@ -181,9 +182,19 @@ Respond appropriately:`;
     return systemPrompt;
 }
 
+// Check if message is a command
+function isCommand(text) {
+    return text.startsWith('/');
+}
+
 // Handle text messages
 async function handleTextMessage(chatId, messageText, userName, messageId) {
     try {
+        // Skip if it's a command - let command handlers deal with it
+        if (isCommand(messageText)) {
+            return;
+        }
+        
         // Get or create user session
         let session = userSessions.get(chatId);
         if (!session) {
@@ -217,6 +228,20 @@ async function handleTextMessage(chatId, messageText, userName, messageId) {
             return;
         }
         
+        // Handle feedback messages
+        if (messageText.toLowerCase().startsWith('feedback:')) {
+            const userName = messageText.from?.first_name || 'User';
+            const feedback = messageText.substring(9).trim();
+            
+            // Log feedback
+            console.log(`📝 Feedback from ${userName} (${chatId}): ${feedback}`);
+            
+            await bot.sendMessage(chatId, `✅ **Thank you for your feedback!**\n\nYour message has been received and will help improve ChatWME.\n\nشكراً لك على ملاحظاتك! تم استلام رسالتك وستساعد في تحسين ChatWME.`, {
+                parse_mode: 'Markdown'
+            });
+            return;
+        }
+        
         // Generate prompt and get response
         const prompt = generatePrompt(messageText, userName, session);
         
@@ -242,7 +267,7 @@ async function handleTextMessage(chatId, messageText, userName, messageId) {
     }
 }
 
-// Handle all messages
+// Handle all messages (but exclude commands)
 bot.on('message', async (msg) => {
     const chatId = msg.chat.id;
     const userName = msg.from.first_name || 'Friend';
@@ -252,7 +277,7 @@ bot.on('message', async (msg) => {
         if (msg.text) {
             await handleTextMessage(chatId, msg.text, userName, messageId);
         } else {
-            // Handle non-text messages
+            // Handle non-text messages only if not a command
             const notSupportedMessage = 'I only process text messages for now. Please send me a text message! / أعالج الرسائل النصية فقط حالياً. أرسل لي رسالة نصية!';
             await bot.sendMessage(chatId, notSupportedMessage);
         }
@@ -511,64 +536,59 @@ bot.on('callback_query', async (callbackQuery) => {
     
     await bot.answerCallbackQuery(callbackQuery.id);
     
-    switch (data) {
-        case 'show_commands':
-            await bot.sendMessage(chatId, 'Use /help to see all available commands and features!');
-            break;
-            
-        case 'contact_creator':
-            await bot.sendMessage(chatId, 'You can contact Abdou directly through his Facebook page or send feedback using /feedback command!');
-            break;
-            
-        case 'lang_en':
-            let session = userSessions.get(chatId);
-            if (!session) {
-                session = new UserSession(chatId);
-                userSessions.set(chatId, session);
-            }
-            session.preferredLanguage = 'en';
-            await bot.sendMessage(chatId, '🇺🇸 **Language set to English!**\n\nI will now respond primarily in English.');
-            break;
-            
-        case 'lang_ar':
-            session = userSessions.get(chatId);
-            if (!session) {
-                session = new UserSession(chatId);
-                userSessions.set(chatId, session);
-            }
-            session.preferredLanguage = 'ar';
-            await bot.sendMessage(chatId, '🇩🇿 **تم تعيين اللغة إلى العربية!**\n\nسأرد الآن بشكل أساسي باللغة العربية.');
-            break;
-            
-        case 'lang_auto':
-            session = userSessions.get(chatId);
-            if (!session) {
-                session = new UserSession(chatId);
-                userSessions.set(chatId, session);
-            }
-            session.preferredLanguage = 'auto';
-            await bot.sendMessage(chatId, '🔄 **Auto-detection enabled!**\n\nI will detect and respond in your message language.\n\nتم تفعيل الكشف التلقائي! سأكتشف وأرد بلغة رسالتك.');
-            break;
-            
-        case 'send_feedback':
-            await bot.sendMessage(chatId, 'Please send your feedback by typing: "Feedback: [your message]"');
-            break;
-    }
-});
-
-// Handle feedback messages
-bot.on('message', async (msg) => {
-    if (msg.text && msg.text.toLowerCase().startsWith('feedback:')) {
-        const chatId = msg.chat.id;
-        const userName = msg.from.first_name || 'User';
-        const feedback = msg.text.substring(9).trim();
-        
-        // Here you could log feedback or send it to a specific channel
-        console.log(`📝 Feedback from ${userName} (${chatId}): ${feedback}`);
-        
-        await bot.sendMessage(chatId, `✅ **Thank you for your feedback!**\n\nYour message has been received and will help improve ChatWME.\n\nشكراً لك على ملاحظاتك! تم استلام رسالتك وستساعد في تحسين ChatWME.`, {
-            parse_mode: 'Markdown'
-        });
+    try {
+        switch (data) {
+            case 'show_commands':
+                await bot.sendMessage(chatId, 'Use /help to see all available commands and features!');
+                break;
+                
+            case 'contact_creator':
+                await bot.sendMessage(chatId, 'You can contact Abdou directly through his Facebook page or send feedback using /feedback command!');
+                break;
+                
+            case 'lang_en':
+                let session = userSessions.get(chatId);
+                if (!session) {
+                    session = new UserSession(chatId);
+                    userSessions.set(chatId, session);
+                }
+                session.preferredLanguage = 'en';
+                await bot.sendMessage(chatId, '🇺🇸 **Language set to English!**\n\nI will now respond primarily in English.', {
+                    parse_mode: 'Markdown'
+                });
+                break;
+                
+            case 'lang_ar':
+                session = userSessions.get(chatId);
+                if (!session) {
+                    session = new UserSession(chatId);
+                    userSessions.set(chatId, session);
+                }
+                session.preferredLanguage = 'ar';
+                await bot.sendMessage(chatId, '🇩🇿 **تم تعيين اللغة إلى العربية!**\n\nسأرد الآن بشكل أساسي باللغة العربية.', {
+                    parse_mode: 'Markdown'
+                });
+                break;
+                
+            case 'lang_auto':
+                session = userSessions.get(chatId);
+                if (!session) {
+                    session = new UserSession(chatId);
+                    userSessions.set(chatId, session);
+                }
+                session.preferredLanguage = 'auto';
+                await bot.sendMessage(chatId, '🔄 **Auto-detection enabled!**\n\nI will detect and respond in your message language.\n\nتم تفعيل الكشف التلقائي! سأكتشف وأرد بلغة رسالتك.', {
+                    parse_mode: 'Markdown'
+                });
+                break;
+                
+            case 'send_feedback':
+                await bot.sendMessage(chatId, 'Please send your feedback by typing: "Feedback: [your message]"');
+                break;
+        }
+    } catch (error) {
+        console.error('❌ Error handling callback query:', error);
+        await bot.sendMessage(chatId, 'An error occurred. Please try again.');
     }
 });
 
