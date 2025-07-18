@@ -1,5 +1,6 @@
 const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
+const express = require('express');
 
 // Bot Configuration
 const BOT_TOKEN = process.env.BOT_TOKEN;
@@ -10,6 +11,8 @@ const GEMINI_KEYS = [
 ].filter(key => key);
 
 const PORT = process.env.PORT || 3000;
+const CREATOR_TELEGRAM = 'https://t.me/Uknowmeabdou';
+const CREATOR_FACEBOOK = 'https://www.facebook.com/abdou.tsu.446062';
 
 // Validate environment variables
 if (!BOT_TOKEN) {
@@ -26,7 +29,6 @@ if (GEMINI_KEYS.length === 0) {
 const bot = new TelegramBot(BOT_TOKEN, { polling: false });
 
 // Express server for webhook
-const express = require('express');
 const app = express();
 app.use(express.json());
 
@@ -38,7 +40,7 @@ app.post(`/webhook/${BOT_TOKEN}`, (req, res) => {
 
 // Health check endpoint
 app.get('/', (req, res) => {
-    res.send('ChatWME Bot is running!');
+    res.send('ChatWME Bot is running! 🤖');
 });
 
 app.listen(PORT, () => {
@@ -53,49 +55,85 @@ if (WEBHOOK_URL) {
         .catch(err => console.error('❌ Webhook error:', err));
 }
 
-// Simple API key rotation
+// Enhanced API key rotation with error tracking
 let currentKeyIndex = 0;
+const keyUsageStats = GEMINI_KEYS.map(() => ({ requests: 0, errors: 0, lastError: null }));
+
 const getCurrentApiKey = () => GEMINI_KEYS[currentKeyIndex];
 const rotateApiKey = () => {
     currentKeyIndex = (currentKeyIndex + 1) % GEMINI_KEYS.length;
     console.log(`🔄 Rotated to API key ${currentKeyIndex + 1}`);
 };
 
-// Simple user sessions
-const userSessions = new Map();
-
+// Enhanced User Session Management
 class UserSession {
     constructor(userId) {
         this.userId = userId;
         this.conversationHistory = [];
         this.lastActivity = Date.now();
-        this.preferredLanguage = 'auto'; // auto, en, ar
+        this.preferredLanguage = 'auto';
         this.messageCount = 0;
+        this.personality = 'friendly';
+        this.interests = [];
+        this.created = Date.now();
+        this.contextKeywords = new Set();
     }
 
     addMessage(role, content) {
-        this.conversationHistory.push({ role, content });
-        // Keep only last 6 messages
-        if (this.conversationHistory.length > 6) {
-            this.conversationHistory = this.conversationHistory.slice(-6);
+        this.conversationHistory.push({
+            role,
+            content,
+            timestamp: Date.now()
+        });
+        
+        // Keep only last 12 messages for better context
+        if (this.conversationHistory.length > 12) {
+            this.conversationHistory = this.conversationHistory.slice(-12);
         }
+        
         this.lastActivity = Date.now();
         this.messageCount++;
+        
+        // Extract keywords for better context
+        this.extractKeywords(content);
+    }
+
+    extractKeywords(text) {
+        const keywords = text.toLowerCase().match(/\b\w{3,}\b/g) || [];
+        keywords.forEach(keyword => {
+            if (keyword.length > 3) {
+                this.contextKeywords.add(keyword);
+            }
+        });
+        
+        // Keep only recent keywords (max 50)
+        if (this.contextKeywords.size > 50) {
+            const keywordsArray = Array.from(this.contextKeywords);
+            this.contextKeywords = new Set(keywordsArray.slice(-50));
+        }
     }
 
     getContext() {
         return this.conversationHistory
+            .slice(-8) // Use last 8 messages for context
             .map(msg => `${msg.role}: ${msg.content}`)
             .join('\n');
     }
 
     detectLanguage(text) {
         const arabicPattern = /[\u0600-\u06FF]/;
-        return arabicPattern.test(text) ? 'ar' : 'en';
+        const frenchPattern = /[àâäéèêëïîôöùûüÿç]/i;
+        const englishPattern = /[a-zA-Z]/;
+        
+        if (arabicPattern.test(text)) return 'ar';
+        if (frenchPattern.test(text) && !englishPattern.test(text)) return 'fr';
+        return 'en';
     }
 
     clearHistory() {
         this.conversationHistory = [];
+        this.contextKeywords.clear();
+        this.lastActivity = Date.now();
     }
 
     getStats() {
@@ -103,94 +141,189 @@ class UserSession {
             messageCount: this.messageCount,
             conversationLength: this.conversationHistory.length,
             lastActivity: this.lastActivity,
-            preferredLanguage: this.preferredLanguage
+            preferredLanguage: this.preferredLanguage,
+            personality: this.personality,
+            daysSinceCreated: Math.floor((Date.now() - this.created) / (1000 * 60 * 60 * 24)),
+            interests: this.interests
         };
+    }
+
+    updateInterests(message) {
+        const interestMap = {
+            tech: ['coding', 'programming', 'tech', 'AI', 'computer', 'software', 'app', 'برمجة', 'تقنية', 'كمبيوتر'],
+            sports: ['football', 'soccer', 'basketball', 'sport', 'match', 'game', 'كرة القدم', 'رياضة', 'مباراة'],
+            culture: ['music', 'art', 'culture', 'movie', 'book', 'film', 'موسيقى', 'فن', 'ثقافة', 'فيلم'],
+            education: ['study', 'school', 'university', 'learn', 'education', 'دراسة', 'مدرسة', 'جامعة', 'تعلم'],
+            business: ['work', 'job', 'business', 'money', 'career', 'عمل', 'وظيفة', 'تجارة', 'مال'],
+            health: ['health', 'medicine', 'doctor', 'exercise', 'fitness', 'صحة', 'طبيب', 'رياضة', 'لياقة']
+        };
+        
+        const lowerMessage = message.toLowerCase();
+        
+        Object.entries(interestMap).forEach(([interest, keywords]) => {
+            if (keywords.some(keyword => lowerMessage.includes(keyword))) {
+                if (!this.interests.includes(interest)) {
+                    this.interests.push(interest);
+                }
+            }
+        });
+        
+        // Keep only last 5 interests
+        if (this.interests.length > 5) {
+            this.interests = this.interests.slice(-5);
+        }
     }
 }
 
-// Gemini API request
+const userSessions = new Map();
+
+// Enhanced Gemini API request with smarter prompting
 async function makeGeminiRequest(prompt, retries = 0) {
-    const maxRetries = GEMINI_KEYS.length;
+    const maxRetries = GEMINI_KEYS.length * 2;
     
     for (let attempt = 0; attempt < maxRetries; attempt++) {
         try {
             const apiKey = getCurrentApiKey();
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+            keyUsageStats[currentKeyIndex].requests++;
+            
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`;
             
             const response = await axios.post(url, {
                 contents: [{
                     parts: [{ text: prompt }]
                 }],
                 generationConfig: {
-                    temperature: 0.7,
-                    maxOutputTokens: 1024
-                }
+                    temperature: 0.85,
+                    maxOutputTokens: 2000,
+                    topK: 40,
+                    topP: 0.95,
+                    candidateCount: 1
+                },
+                safetySettings: [
+                    {
+                        category: "HARM_CATEGORY_HARASSMENT",
+                        threshold: "BLOCK_MEDIUM_AND_ABOVE"
+                    },
+                    {
+                        category: "HARM_CATEGORY_HATE_SPEECH",
+                        threshold: "BLOCK_MEDIUM_AND_ABOVE"
+                    },
+                    {
+                        category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                        threshold: "BLOCK_MEDIUM_AND_ABOVE"
+                    },
+                    {
+                        category: "HARM_CATEGORY_DANGEROUS_CONTENT",
+                        threshold: "BLOCK_MEDIUM_AND_ABOVE"
+                    }
+                ]
             }, {
-                timeout: 30000
+                timeout: 35000,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'User-Agent': 'ChatWME-Bot/2.0'
+                }
             });
             
             if (response.data.candidates?.[0]?.content?.parts?.[0]?.text) {
                 return response.data.candidates[0].content.parts[0].text;
             }
             
-            throw new Error('No valid response from Gemini');
+            throw new Error('No valid response from Gemini API');
             
         } catch (error) {
+            keyUsageStats[currentKeyIndex].errors++;
+            keyUsageStats[currentKeyIndex].lastError = error.message;
+            
             console.error(`❌ Error with API key ${currentKeyIndex + 1}:`, error.message);
             
-            if (error.response?.status === 429) {
-                console.log('⚠️ Rate limit hit, rotating key...');
+            if (error.response?.status === 429 || error.response?.status === 403) {
+                console.log('⚠️ Rate limit or quota exceeded, rotating key...');
                 rotateApiKey();
+                await new Promise(resolve => setTimeout(resolve, 2000));
                 continue;
             }
             
             if (attempt === maxRetries - 1) {
-                throw error;
+                throw new Error(`All API keys exhausted. Last error: ${error.message}`);
             }
             
             rotateApiKey();
+            await new Promise(resolve => setTimeout(resolve, 1000));
         }
     }
 }
 
-// Generate prompt based on user message
+// Enhanced prompt generation with much smarter context
 function generatePrompt(messageText, userName, session) {
     const language = session.preferredLanguage === 'auto' ? 
         session.detectLanguage(messageText) : session.preferredLanguage;
-    const context = session.getContext();
     
-    const systemPrompt = `You are ChatWME, an AI assistant created by Abdou.
+    const context = session.getContext();
+    const interests = session.interests.length > 0 ? session.interests.join(', ') : 'general topics';
+    const recentKeywords = Array.from(session.contextKeywords).slice(-10).join(', ');
+    
+    const personalityStyles = {
+        friendly: 'warm, encouraging, and supportive with appropriate emojis',
+        professional: 'formal, precise, and business-like',
+        casual: 'relaxed, informal, and conversational',
+        technical: 'detailed, analytical, and fact-focused'
+    };
+    
+    const languageInstructions = {
+        'ar': 'Respond primarily in Arabic. Use Modern Standard Arabic mixed with Algerian Darija when appropriate. Show cultural awareness of Algeria and the Middle East.',
+        'en': 'Respond in clear, natural English with international perspective.',
+        'fr': 'Respond in French with cultural awareness of Francophone regions.',
+        'auto': 'Respond in the same language as the user\'s message, matching their linguistic style.'
+    };
 
-PERSONALITY:
-- Friendly and helpful
-- Culturally aware (especially Algerian context)
-- Conversational and engaging
+    const systemPrompt = `You are ChatWME, an advanced AI assistant created by Abdou, a skilled developer from Algeria. You are intelligent, culturally aware, and genuinely helpful.
 
-LANGUAGE:
-- Respond in ${language === 'ar' ? 'Arabic/Algerian Darija' : 'English'}
-- Use emojis naturally
-- Be concise but informative
+PERSONALITY & STYLE:
+- Be ${personalityStyles[session.personality]}
+- ${languageInstructions[language]}
+- Provide thoughtful, nuanced responses that show real understanding
+- Use contextual knowledge to give relevant, practical advice
+- Be concise but comprehensive (2-5 sentences typically)
+- Show genuine interest in the user's needs and follow up appropriately
 
-CONTEXT:
-${context ? `Previous conversation:\n${context}\n` : ''}
+USER PROFILE:
+- Name: ${userName}
+- Total messages: ${session.messageCount}
+- Language preference: ${session.preferredLanguage}
+- Communication style: ${session.personality}
+- Interests: ${interests}
+- Recent discussion topics: ${recentKeywords || 'none yet'}
 
-USER: ${userName}
-MESSAGE: ${messageText}
+CONVERSATION CONTEXT:
+${context ? `Recent conversation:\n${context}\n` : 'This is a new conversation.'}
 
-Respond appropriately:`;
+RESPONSE GUIDELINES:
+- Draw connections between current message and previous context when relevant
+- Provide actionable insights and practical suggestions
+- Ask thoughtful follow-up questions when appropriate
+- Show cultural sensitivity, especially for North African/Middle Eastern contexts
+- Avoid repetitive responses - build on previous conversations
+- If asked about technical topics, provide detailed explanations
+- For personal questions, be supportive and encouraging
+
+CURRENT MESSAGE: "${messageText}"
+
+Respond intelligently and contextually:`;
 
     return systemPrompt;
 }
 
-// Check if message is a command
+// Enhanced command checking
 function isCommand(text) {
-    return text.startsWith('/');
+    if (!text) return false;
+    return text.startsWith('/') && text.length > 1;
 }
 
-// Handle text messages
+// Enhanced message handling with smarter responses
 async function handleTextMessage(chatId, messageText, userName, messageId) {
     try {
-        // Skip if it's a command - let command handlers deal with it
+        // Skip commands
         if (isCommand(messageText)) {
             return;
         }
@@ -202,59 +335,86 @@ async function handleTextMessage(chatId, messageText, userName, messageId) {
             userSessions.set(chatId, session);
         }
         
-        // Add user message to history
+        // Update user interests and context
+        session.updateInterests(messageText);
         session.addMessage('user', messageText);
         
-        // Handle creator queries
+        // Handle creator queries with more variations
         const creatorQueries = [
-            'who made you', 'who created you', 'your creator', 'developer',
-            'من صنعك', 'من عملك', 'شكون صنعك', 'مطورك'
+            'who made you', 'who created you', 'your creator', 'developer', 'who built you',
+            'your maker', 'who programmed you', 'who designed you', 'creator contact',
+            'من صنعك', 'من عملك', 'شكون صنعك', 'مطورك', 'من بناك', 'من برمجك', 'منو عملك',
+            'qui t\'a créé', 'qui t\'a fait', 'ton créateur', 'développeur', 'qui t\'a programmé'
         ];
         
         if (creatorQueries.some(query => messageText.toLowerCase().includes(query))) {
-            const creatorMessage = session.detectLanguage(messageText) === 'ar' ?
-                `👨‍💻 تم إنشائي من قبل **عبدو**!\n\nمطور موهوب قام ببنائي لمساعدتك. يمكنك زيارة صفحته على Facebook! 🚀` :
-                `👨‍💻 I was created by **Abdou**!\n\nA talented developer who built me to help you. You can visit his Facebook page! 🚀`;
+            const creatorResponses = {
+                'ar': `👨‍💻 **تم إنشائي من قبل عبدو**! 🇩🇿\n\nمطور جزائري موهوب ومبدع قام ببنائي لمساعدتك في كل ما تحتاجه. يمكنك التواصل معه مباشرة من خلال الروابط أدناه! 🚀\n\nيسعدني أن أكون مساعدك الذكي! 😊`,
+                'en': `👨‍💻 **I was created by Abdou**! 🇩🇿\n\nA talented Algerian developer who built me to assist you with anything you need. You can reach out to him directly through the links below! 🚀\n\nI'm happy to be your intelligent assistant! 😊`,
+                'fr': `👨‍💻 **J'ai été créé par Abdou**! 🇩🇿\n\nUn développeur algérien talentueux qui m'a construit pour vous aider avec tout ce dont vous avez besoin. Vous pouvez le contacter directement via les liens ci-dessous! 🚀\n\nJe suis heureux d'être votre assistant intelligent! 😊`
+            };
             
-            await bot.sendMessage(chatId, creatorMessage, {
+            const detectedLang = session.detectLanguage(messageText);
+            const response = creatorResponses[detectedLang] || creatorResponses['en'];
+            
+            await bot.sendMessage(chatId, response, {
                 parse_mode: 'Markdown',
+                reply_to_message_id: messageId,
                 reply_markup: {
-                    inline_keyboard: [[{
-                        text: '👤 Visit Abdou\'s Facebook',
-                        url: 'https://www.facebook.com/abdou.tsu.446062'
-                    }]]
+                    inline_keyboard: [
+                        [
+                            { text: '📘 Facebook', url: CREATOR_FACEBOOK },
+                            { text: '💬 Telegram', url: CREATOR_TELEGRAM }
+                        ]
+                    ]
                 }
             });
+            
+            session.addMessage('assistant', response);
             return;
         }
         
-        
-        // Generate prompt and get response
+        // Generate enhanced prompt
         const prompt = generatePrompt(messageText, userName, session);
         
         // Send typing indicator
         await bot.sendChatAction(chatId, 'typing');
         
-        // Get response from Gemini
+        // Get smarter response from Gemini
         const response = await makeGeminiRequest(prompt);
         
-        // Add response to history
-        session.addMessage('assistant', response);
+        // Clean up response
+        const cleanResponse = response.trim();
         
-        // Send response
-        await bot.sendMessage(chatId, response, {
-            reply_to_message_id: messageId
+        // Add response to history
+        session.addMessage('assistant', cleanResponse);
+        
+        // Send response with better formatting
+        await bot.sendMessage(chatId, cleanResponse, {
+            reply_to_message_id: messageId,
+            parse_mode: 'Markdown',
+            disable_web_page_preview: true
         });
         
     } catch (error) {
         console.error('❌ Error handling message:', error);
         
-        const errorMessage = 'Sorry, I encountered an error. Please try again. / عذراً، حدث خطأ. حاول مرة أخرى.';
-        await bot.sendMessage(chatId, errorMessage);
+        let session = userSessions.get(chatId);
+        const detectedLang = session ? session.detectLanguage(messageText) : 'en';
+        
+        const errorMessages = {
+            'ar': '😅 عذراً، حدث خطأ تقني مؤقت. حاول مرة أخرى خلال لحظات من فضلك!',
+            'en': '😅 Sorry, I encountered a temporary technical issue. Please try again in a moment!',
+            'fr': '😅 Désolé, j\'ai rencontré un problème technique temporaire. Veuillez réessayer dans un moment!'
+        };
+        
+        await bot.sendMessage(chatId, errorMessages[detectedLang] || errorMessages['en'], {
+            reply_to_message_id: messageId
+        });
     }
 }
 
-// Handle all messages (but exclude commands)
+// Message handler
 bot.on('message', async (msg) => {
     const chatId = msg.chat.id;
     const userName = msg.from.first_name || 'Friend';
@@ -263,36 +423,61 @@ bot.on('message', async (msg) => {
     try {
         if (msg.text) {
             await handleTextMessage(chatId, msg.text, userName, messageId);
-        } else {
-            // Handle non-text messages only if not a command
-            const notSupportedMessage = 'I only process text messages for now. Please send me a text message! / أعالج الرسائل النصية فقط حالياً. أرسل لي رسالة نصية!';
-            await bot.sendMessage(chatId, notSupportedMessage);
+        } else if (msg.photo || msg.document || msg.audio || msg.video) {
+            const notSupportedMessage = '📝 I can only process text messages currently. Please send me a text message!\n\n📝 أعالج الرسائل النصية فقط حالياً. أرسل لي رسالة نصية!\n\n📝 Je ne peux traiter que les messages texte actuellement. Envoyez-moi un message texte!';
+            await bot.sendMessage(chatId, notSupportedMessage, {
+                reply_to_message_id: messageId
+            });
         }
     } catch (error) {
         console.error('❌ Error in message handler:', error);
-        await bot.sendMessage(chatId, 'An error occurred. Please try again. / حدث خطأ. حاول مرة أخرى.');
+        await bot.sendMessage(chatId, 'An error occurred. Please try again. 🔄\n\nحدث خطأ. حاول مرة أخرى. 🔄', {
+            reply_to_message_id: messageId
+        });
     }
 });
+
+// COMMAND HANDLERS
 
 // Start command
 bot.onText(/\/start/, async (msg) => {
     const chatId = msg.chat.id;
     const userName = msg.from.first_name || 'Friend';
     
-    const welcomeMessage = `🤖 **مرحباً ${userName}، أنا ChatWME!**\n\n` +
-                          `مساعد ذكي يمكنني المحادثة معك بالعربية والإنجليزية 💬\n\n` +
+    // Create or get session
+    let session = userSessions.get(chatId);
+    if (!session) {
+        session = new UserSession(chatId);
+        userSessions.set(chatId, session);
+    }
+    
+    const welcomeMessage = `🤖 **أهلاً وسهلاً ${userName}، أنا ChatWME!**\n\n` +
+                          `مساعدك الذكي المتطور الذي يمكنه:\n` +
+                          `• المحادثة بالعربية، الإنجليزية والفرنسية 🗣️\n` +
+                          `• الإجابة على أسئلتك بذكاء وفهم عميق 💡\n` +
+                          `• مساعدتك في مهامك اليومية والتعليمية ✅\n` +
+                          `• فهم السياق الثقافي الجزائري والعربي 🇩🇿\n\n` +
                           `---\n\n` +
                           `🤖 **Hello ${userName}, I'm ChatWME!**\n\n` +
-                          `An AI assistant that can chat with you in Arabic and English 💬\n\n` +
-                          `💡 **أرسل لي أي رسالة وسأجيبك! / Send me any message and I'll respond!**\n\n` +
-                          `📋 **Use /help to see all available commands**`;
+                          `Your advanced AI assistant that can:\n` +
+                          `• Chat in Arabic, English & French 🗣️\n` +
+                          `• Answer questions with intelligence and deep understanding 💡\n` +
+                          `• Help with daily tasks and learning ✅\n` +
+                          `• Understand Algerian and Arab cultural context 🇩🇿\n\n` +
+                          `💬 **Just send me any message to start our intelligent conversation!**`;
     
     await bot.sendMessage(chatId, welcomeMessage, {
         parse_mode: 'Markdown',
         reply_markup: {
             inline_keyboard: [
-                [{ text: '📋 Commands', callback_data: 'show_commands' }],
-                [{ text: '👤 Meet Abdou (Creator)', url: 'https://www.facebook.com/abdou.tsu.446062' }]
+                [
+                    { text: '📋 Commands', callback_data: 'show_commands' },
+                    { text: '🌐 Language', callback_data: 'set_language' }
+                ],
+                [
+                    { text: '👤 Meet Creator', url: CREATOR_FACEBOOK },
+                    { text: '💬 Telegram', url: CREATOR_TELEGRAM }
+                ]
             ]
         }
     });
@@ -302,36 +487,59 @@ bot.onText(/\/start/, async (msg) => {
 bot.onText(/\/help/, async (msg) => {
     const chatId = msg.chat.id;
     
-    const helpMessage = `🆘 **ChatWME Help**\n\n` +
-                       `**📋 Available Commands:**\n` +
-                       `• /start - Start conversation\n` +
+    const helpMessage = `🆘 **ChatWME Commands Help**\n\n` +
+                       `**🔧 Main Commands:**\n` +
+                       `• /start - Welcome & introduction\n` +
                        `• /help - Show this help menu\n` +
-                       `• /creator - Creator information\n` +
                        `• /about - About ChatWME\n` +
-                       `• /clear - Clear conversation history\n` +
-                       `• /stats - Your usage statistics\n` +
+                       `• /creator - Meet the creator\n\n` +
+                       `**⚙️ Settings:**\n` +
                        `• /language - Set preferred language\n` +
-                       `• /support - Get support\n` +
-                     
-    await bot.sendMessage(chatId, helpMessage, { parse_mode: 'Markdown' });
+                       `• /personality - Set chat personality\n` +
+                       `• /clear - Clear conversation history\n\n` +
+                       `**📊 Info:**\n` +
+                       `• /stats - Your usage statistics\n` +
+                       `• /status - Bot system status\n` +
+                       `• /support - Get help & support\n\n` +
+                       `**💬 Just type any message to start chatting!**`;
+    
+    await bot.sendMessage(chatId, helpMessage, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+            inline_keyboard: [
+                [
+                    { text: '💬 Start Chatting', callback_data: 'start_chat' },
+                    { text: '👤 Creator', url: CREATOR_TELEGRAM }
+                ]
+            ]
+        }
+    });
 });
 
 // Creator command
 bot.onText(/\/creator/, async (msg) => {
     const chatId = msg.chat.id;
     
-    const creatorMessage = `👨‍💻 **Creator Information**\n\n` +
-                          `**Name:** Abdou\n` +
-                          `**Skills:** Web Development, Bots, App Developement\n` +
-                          `**Location:** Algeria 🇩🇿\n` +
-                          `🔗 **Connect with Abdou:**`;
+    const creatorMessage = `👨‍💻 **Meet Abdou - ChatWME Creator**\n\n` +
+                          `🇩🇿 **From:** Algeria\n` +
+                          `💼 **Skills:** Full-Stack Development, AI/ML, Bot Development\n` +
+                          `🎯 **Specialty:** Intelligent Conversational AI\n` +
+                          `🚀 **Mission:** Building AI that understands and serves Arabic speakers\n\n` +
+                          `**🌟 Why ChatWME?**\n` +
+                          `Created to bridge language and cultural gaps in AI assistance, focusing on Arabic and North African context with advanced intelligence.\n\n` +
+                          `**📞 Get in Touch:**`;
     
     await bot.sendMessage(chatId, creatorMessage, {
         parse_mode: 'Markdown',
         reply_markup: {
             inline_keyboard: [
-                [{ text: '📘 Visit Facebook', url: 'https://www.facebook.com/abdou.tsu.446062' }],
-                [{ text: '💬 Chat with Creator', url: 't.me/Uknowmeabdou' }]
+                [
+                    { text: '📘 Facebook', url: CREATOR_FACEBOOK },
+                    { text: '💬 Telegram', url: CREATOR_TELEGRAM }
+                ],
+                [
+                    { text: '🤖 Back to Chat', callback_data: 'back_to_chat' }
+                ]
             ]
         }
     });
@@ -342,34 +550,66 @@ bot.onText(/\/about/, async (msg) => {
     const chatId = msg.chat.id;
     
     const aboutMessage = `🤖 **About ChatWME**\n\n` +
-                        `**Version:** 1.0\n` +
-                        `**Created by:** Abdou\n` +
-                        `**Language Support:** All\n` +
-                        `**🎯 Purpose:**\n` +
-                        `ChatWME is designed to provide intelligent conversation assistance in both Arabic and English, with special focus on Algerian culture and dialect.\n\n` +
-                        `**🌟 Features:**\n` +
-                        `• Multiple conversation support\n` +
-                        `• Context-aware responses\n` +
-                        `• Cultural sensitivity\n` +
-                        `• Fast and reliable responses\n` +
-                        `• User-friendly interface\n\n` +
+                        `**🔧 Version:** 2.0 Enhanced Intelligence\n` +
+                        `**👨‍💻 Creator:** Abdou (Algeria)\n` +
+                        `**🧠 AI Model:** Google Gemini 2.0 Flash\n` +
+                        `**🌍 Languages:** Arabic, English, French\n` +
+                        `**🎯 Specialty:** Algerian & North African Context\n\n` +
+                        `**✨ Key Features:**\n` +
+                        `• Advanced conversation with contextual memory\n` +
+                        `• Multi-language support with auto-detection\n` +
+                        `• Cultural sensitivity and local understanding\n` +
+                        `• Personalized responses based on interests\n` +
+                        `• Enhanced intelligence and reasoning\n\n` +
+                        `**🔄 Latest Updates:**\n` +
+                        `• Smarter response generation\n` +
+                        `• Better Arabic language support\n` +
+                        `• Improved cultural context understanding\n` +
+                        `• Enhanced conversation flow\n\n` +
+                        `**🛠️ Technical:**\n` +
+                        `• Node.js & Express backend\n` +
+                        `• Telegram Bot API integration\n` +
+                        `• Railway cloud hosting\n` +
+                        `• Advanced session management`;
     
-    await bot.sendMessage(chatId, aboutMessage, { parse_mode: 'Markdown' });
+    await bot.sendMessage(chatId, aboutMessage, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+            inline_keyboard: [
+                [
+                    { text: '👤 Meet Creator', url: CREATOR_FACEBOOK },
+                    { text: '💬 Telegram', url: CREATOR_TELEGRAM }
+                ]
+            ]
+        }
+    });
 });
 
-// Clear conversation command
+// Clear command
 bot.onText(/\/clear/, async (msg) => {
     const chatId = msg.chat.id;
     
     const session = userSessions.get(chatId);
     if (session) {
         session.clearHistory();
-        const clearMessage = `🧹 **Conversation Cleared!**\n\n` +
-                           `Your conversation history has been reset. We can start fresh now!\n\n` +
-                           `تم مسح تاريخ المحادثة! يمكننا البدء من جديد الآن!`;
-        await bot.sendMessage(chatId, clearMessage, { parse_mode: 'Markdown' });
+        const clearMessage = `🧹 **Conversation Cleared Successfully!**\n\n` +
+                           `✅ Your conversation history has been reset\n` +
+                           `✅ We can start fresh with a clean slate\n` +
+                           `✅ Your preferences and settings are preserved\n\n` +
+                           `💬 **Ready for a new intelligent conversation!**\n\n` +
+                           `🔄 **تم مسح سجل المحادثة بنجاح!**\n` +
+                           `يمكننا البدء من جديد الآن! 🚀`;
+        
+        await bot.sendMessage(chatId, clearMessage, {
+            parse_mode: 'Markdown',
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '💬 Start New Chat', callback_data: 'start_chat' }]
+                ]
+            }
+        });
     } else {
-        await bot.sendMessage(chatId, 'No conversation history to clear. / لا يوجد تاريخ محادثة لمسحه.');
+        await bot.sendMessage(chatId, 'No conversation history found. Start chatting to create one! 💬\n\nلا يوجد سجل محادثة. ابدأ المحادثة لإنشاء واحد! 💬');
     }
 });
 
@@ -381,20 +621,39 @@ bot.onText(/\/stats/, async (msg) => {
     if (session) {
         const stats = session.getStats();
         const lastActivity = new Date(stats.lastActivity).toLocaleString();
+        const interests = stats.interests.length > 0 ? stats.interests.join(', ') : 'Not detected yet';
         
         const statsMessage = `📊 **Your ChatWME Statistics**\n\n` +
-                           `**Messages Sent:** ${stats.messageCount}\n` +
-                           `**Conversation Length:** ${stats.conversationLength} messages\n` +
-                           `**Last Activity:** ${lastActivity}\n` +
-                           `**Preferred Language:** ${stats.preferredLanguage}\n\n` +
-                           `**Active Sessions:** ${userSessions.size} users\n\n` +
-                           `Thank you for using ChatWME! 🙏`;
+                           `**👤 Personal Stats:**\n` +
+                           `• Messages sent: ${stats.messageCount}\n` +
+                           `• Days active: ${stats.daysSinceCreated}\n` +
+                           `• Current conversation: ${stats.conversationLength} messages\n` +
+                           `• Last activity: ${lastActivity}\n\n` +
+                           `**⚙️ Settings:**\n` +
+                           `• Language preference: ${stats.preferredLanguage}\n` +
+                           `• Personality mode: ${stats.personality}\n` +
+                           `• Detected interests: ${interests}\n\n` +
+                           `**🌍 Global Stats:**\n` +
+                           `• Active users: ${userSessions.size}\n` +
+                           `• Bot status: Online ✅\n\n` +
+                           `**شكراً لاستخدامك ChatWME! 🙏**`;
         
-        await bot.sendMessage(chatId, statsMessage, { parse_mode: 'Markdown' });
+        await bot.sendMessage(chatId, statsMessage, {
+            parse_mode: 'Markdown',
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        { text: '🧹 Clear History', callback_data: 'clear_history' },
+                        { text: '👤 Creator', url: CREATOR_TELEGRAM }
+                    ]
+                ]
+            }
+        });
     } else {
-        await bot.sendMessage(chatId, 'No statistics available. Start chatting to generate stats! / لا توجد إحصائيات متاحة. ابدأ المحادثة لإنشاء إحصائيات!');
+        await bot.sendMessage(chatId, 'No statistics available yet. Start chatting to generate stats! 📊\n\nلا توجد إحصائيات بعد. ابدأ المحادثة لإنشاء إحصائيات! 📊');
     }
 });
+
 
 // Language command
 bot.onText(/\/language/, async (msg) => {
