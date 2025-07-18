@@ -186,7 +186,7 @@ async function makeGeminiRequest(prompt, retries = 0) {
             const apiKey = getCurrentApiKey();
             keyUsageStats[currentKeyIndex].requests++;
             
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`;
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-exp:generateContent?key=${apiKey}`;
             
             const response = await axios.post(url, {
                 contents: [{
@@ -349,9 +349,9 @@ async function handleTextMessage(chatId, messageText, userName, messageId) {
         
         if (creatorQueries.some(query => messageText.toLowerCase().includes(query))) {
             const creatorResponses = {
-                'ar': `👨‍💻 **تم إنشائي من قبل عبدو**! 🇩🇿\n\nمطور جزائري موهوب ومبدع قام ببنائي لمساعدتك في كل ما تحتاجه. يمكنك التواصل معه مباشرة من خلال الروابط أدناه! 🚀\n\nيسعدني أن أكون مساعدك الذكي! 😊`,
-                'en': `👨‍💻 **I was created by Abdou**! 🇩🇿\n\nA talented Algerian developer who built me to assist you with anything you need. You can reach out to him directly through the links below! 🚀\n\nI'm happy to be your intelligent assistant! 😊`,
-                'fr': `👨‍💻 **J'ai été créé par Abdou**! 🇩🇿\n\nUn développeur algérien talentueux qui m'a construit pour vous aider avec tout ce dont vous avez besoin. Vous pouvez le contacter directement via les liens ci-dessous! 🚀\n\nJe suis heureux d'être votre assistant intelligent! 😊`
+                'ar': `👨‍💻 **تم إنشائي من قبل عبدو**! 🇩🇿\n\n يمكنك التواصل معه مباشرة من خلال الروابط أدناه 🚀\n\nيسعدني أن أكون مساعدك الذكي! 😊`,
+                'en': `👨‍💻 **I was created by Abdou**! 🇩🇿\n\n You can reach out to him directly through the links below! 🚀\n\nI'm happy to be your intelligent assistant! 😊`,
+                'fr': `👨‍💻 **J'ai été créé par Abdou**! 🇩🇿\n\n Vous pouvez le contacter directement via les liens ci-dessous! 🚀\n\nJe suis heureux d'être votre assistant intelligent! 😊`
             };
             
             const detectedLang = session.detectLanguage(messageText);
@@ -456,14 +456,12 @@ bot.onText(/\/start/, async (msg) => {
                           `• المحادثة بالعربية، الإنجليزية والفرنسية 🗣️\n` +
                           `• الإجابة على أسئلتك بذكاء وفهم عميق 💡\n` +
                           `• مساعدتك في مهامك اليومية والتعليمية ✅\n` +
-                          `• فهم السياق الثقافي الجزائري والعربي 🇩🇿\n\n` +
                           `---\n\n` +
                           `🤖 **Hello ${userName}, I'm ChatWME!**\n\n` +
                           `Your advanced AI assistant that can:\n` +
                           `• Chat in Arabic, English & French 🗣️\n` +
                           `• Answer questions with intelligence and deep understanding 💡\n` +
                           `• Help with daily tasks and learning ✅\n` +
-                          `• Understand Algerian and Arab cultural context 🇩🇿\n\n` +
                           `💬 **Just send me any message to start our intelligent conversation!**`;
     
     await bot.sendMessage(chatId, welcomeMessage, {
@@ -524,7 +522,6 @@ bot.onText(/\/creator/, async (msg) => {
                           `🇩🇿 **From:** Algeria\n` +
                           `💼 **Skills:** Full-Stack Development, AI/ML, Bot Development\n` +
                           `🎯 **Specialty:** Intelligent Conversational AI\n` +
-                          `🚀 **Mission:** Building AI that understands and serves Arabic speakers\n\n` +
                           `**🌟 Why ChatWME?**\n` +
                           `Created to bridge language and cultural gaps in AI assistance, focusing on Arabic and North African context with advanced intelligence.\n\n` +
                           `**📞 Get in Touch:**`;
@@ -552,7 +549,6 @@ bot.onText(/\/about/, async (msg) => {
     const aboutMessage = `🤖 **About ChatWME**\n\n` +
                         `**🔧 Version:** 2.0 Enhanced Intelligence\n` +
                         `**👨‍💻 Creator:** Abdou (Algeria)\n` +
-                        `**🧠 AI Model:** Google Gemini 2.0 Flash\n` +
                         `**🌍 Languages:** Arabic, English, French\n` +
                         `**🎯 Specialty:** Algerian & North African Context\n\n` +
                         `**✨ Key Features:**\n` +
@@ -566,11 +562,7 @@ bot.onText(/\/about/, async (msg) => {
                         `• Better Arabic language support\n` +
                         `• Improved cultural context understanding\n` +
                         `• Enhanced conversation flow\n\n` +
-                        `**🛠️ Technical:**\n` +
-                        `• Node.js & Express backend\n` +
-                        `• Telegram Bot API integration\n` +
-                        `• Railway cloud hosting\n` +
-                        `• Advanced session management`;
+                       
     
     await bot.sendMessage(chatId, aboutMessage, {
         parse_mode: 'Markdown',
@@ -665,45 +657,118 @@ bot.onText(/\/language/, async (msg) => {
             inline_keyboard: [
                 [{ text: '🇺🇸 English', callback_data: 'lang_en' }],
                 [{ text: '🇩🇿 العربية', callback_data: 'lang_ar' }],
+                [{ text: '🇫🇷 Français', callback_data: 'lang_fr' }],
                 [{ text: '🔄 Auto-detect', callback_data: 'lang_auto' }]
             ]
         }
     });
 });
 
-
-
-// Support command
-bot.onText(/\/support/, async (msg) => {
+// Personality command
+bot.onText(/\/personality/, async (msg) => {
     const chatId = msg.chat.id;
     
-    const supportMessage = `🆘 **ChatWME Support**\n\n` +
-                          `**Need Help?**\n` +
-                          `If you're experiencing issues or need assistance:\n\n` +
-                          `**📧 Contact Methods:**\n` +
-                          `• Contact creator directly via Facebook/Telegram\n` +
-                          `• Use /help for command assistance\n\n` +
-                          `**🔧 Common Issues:**\n` +
-                          `• Bot not responding: Wait a moment and try again\n` +
-                          `• Wrong language: Use /language to set preference\n` +
-                          `• Conversation issues: Use /clear to reset\n\n` +
-                          `**⏰ Response Time:**\n` +
-                          `Usually within a few seconds. If delayed, please wait or try again.\n\n` +
-                          
-    await bot.sendMessage(chatId, supportMessage, {
+    await bot.sendMessage(chatId, '🎭 **Choose Your Chat Personality:**\n\nاختر شخصية المحادثة:', {
         parse_mode: 'Markdown',
         reply_markup: {
             inline_keyboard: [
-                [{ text: '📧 Send Feedback', url: 't.me/Uknowmeabdou' }],
-                [{ text: '👤 Contact Creator', url: 'https://www.facebook.com/abdou.tsu.446062' }]
+                [{ text: '😊 Friendly', callback_data: 'personality_friendly' }],
+                [{ text: '💼 Professional', callback_data: 'personality_professional' }],
+                [{ text: '😎 Casual', callback_data: 'personality_casual' }],
+                [{ text: '🤓 Technical', callback_data: 'personality_technical' }]
             ]
         }
     });
 });
 
+// Status command
+bot.onText(/\/status/, async (msg) => {
+    const chatId = msg.chat.id;
+    
+    // Calculate system stats
+    const uptime = process.uptime();
+    const memoryUsage = process.memoryUsage();
+    const activeSessions = userSessions.size;
+    
+    const formatUptime = (seconds) => {
+        const days = Math.floor(seconds / 86400);
+        const hours = Math.floor((seconds % 86400) / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        return `${days}d ${hours}h ${minutes}m`;
+    };
+    
+    const formatMemory = (bytes) => {
+        return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+    };
+    
+    const statusMessage = `🔧 **ChatWME System Status**\n\n` +
+                         `**🤖 Bot Status:** Online ✅\n` +
+                         `**⏰ Uptime:** ${formatUptime(uptime)}\n` +
+                         `**👥 Active Users:** ${activeSessions}\n` +
+                         `**🔑 API Keys:** ${GEMINI_KEYS.length} configured\n\n` +
+                         `**💾 Memory Usage:**\n` +
+                         `• Used: ${formatMemory(memoryUsage.heapUsed)}\n` +
+                         `• Total: ${formatMemory(memoryUsage.heapTotal)}\n\n` +
+                         `**🌐 Server:** Railway Cloud\n` +
+                         `**📡 Connection:** Stable\n` +
+                         `**🔄 Last Update:** Enhanced Intelligence v2.0\n\n` +
+                         `**✅ All systems operational!**`;
+    
+    await bot.sendMessage(chatId, statusMessage, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+            inline_keyboard: [
+                [
+                    { text: '📊 My Stats', callback_data: 'my_stats' },
+                    { text: '💬 Creator', url: CREATOR_TELEGRAM }
+                ]
+            ]
+        }
+    });
+});
 
+// Support command
+bot.onText(/\/support/, async (msg) => {
+    const chatId = msg.chat.id;
+    
+    const supportMessage = `🆘 **ChatWME Support Center**\n\n` +
+                          `**Need Help?**\n` +
+                          `I'm here to assist you with any issues or questions!\n\n` +
+                          `**📞 Contact Methods:**\n` +
+                          `• Direct message to creator via Telegram\n` +
+                          `• Facebook page for detailed support\n` +
+                          `• Use /help for command assistance\n\n` +
+                          `**🔧 Common Solutions:**\n` +
+                          `• Bot not responding? Wait 30 seconds and retry\n` +
+                          `• Wrong language? Use /language to set preference\n` +
+                          `• Conversation issues? Use /clear to reset\n` +
+                          `• Need commands? Use /help for full list\n\n` +
+                          `**⏰ Response Time:**\n` +
+                          `Usually instant. If delayed, please wait or contact creator.\n\n` +
+                          `**💡 Tips:**\n` +
+                          `• Be specific in your questions\n` +
+                          `• Use clear language for better responses\n` +
+                          `• Try different phrasings if needed\n\n` +
+                          `**🙏 Thank you for using ChatWME!**`;
+    
+    await bot.sendMessage(chatId, supportMessage, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+            inline_keyboard: [
+                [
+                    { text: '📘 Facebook Support', url: CREATOR_FACEBOOK },
+                    { text: '💬 Telegram Support', url: CREATOR_TELEGRAM }
+                ],
+                [
+                    { text: '📋 Commands Help', callback_data: 'show_commands' },
+                    { text: '🔄 Try Again', callback_data: 'start_chat' }
+                ]
+            ]
+        }
+    });
+});
 
-// Handle callback queries
+// Handle callback queries (enhanced)
 bot.on('callback_query', async (callbackQuery) => {
     const chatId = callbackQuery.message.chat.id;
     const data = callbackQuery.data;
@@ -711,94 +776,245 @@ bot.on('callback_query', async (callbackQuery) => {
     await bot.answerCallbackQuery(callbackQuery.id);
     
     try {
+        let session = userSessions.get(chatId);
+        if (!session) {
+            session = new UserSession(chatId);
+            userSessions.set(chatId, session);
+        }
+        
         switch (data) {
             case 'show_commands':
-                await bot.sendMessage(chatId, 'Use /help to see all available commands and features!');
+                await bot.sendMessage(chatId, '📋 **Available Commands:**\n\n' +
+                    '• /start - Welcome & introduction\n' +
+                    '• /help - Show help menu\n' +
+                    '• /about - About ChatWME\n' +
+                    '• /creator - Meet the creator\n' +
+                    '• /language - Set language preference\n' +
+                    '• /personality - Set chat personality\n' +
+                    '• /clear - Clear conversation history\n' +
+                    '• /stats - Your usage statistics\n' +
+                    '• /status - Bot system status\n' +
+                    '• /support - Get help & support\n\n' +
+                    '💬 **Just send any message to start chatting!**', {
+                    parse_mode: 'Markdown'
+                });
                 break;
                 
-            case 'contact_creator':
-                await bot.sendMessage(chatId, 'You can contact Abdou directly through his Facebook page or send feedback using /feedback command!');
+            case 'set_language':
+                await bot.sendMessage(chatId, '🌐 **Choose Your Language:**', {
+                    reply_markup: {
+                        inline_keyboard: [
+                            [{ text: '🇺🇸 English', callback_data: 'lang_en' }],
+                            [{ text: '🇩🇿 العربية', callback_data: 'lang_ar' }],
+                            [{ text: '🇫🇷 Français', callback_data: 'lang_fr' }],
+                            [{ text: '🔄 Auto-detect', callback_data: 'lang_auto' }]
+                        ]
+                    }
+                });
                 break;
                 
             case 'lang_en':
-                let session = userSessions.get(chatId);
-                if (!session) {
-                    session = new UserSession(chatId);
-                    userSessions.set(chatId, session);
-                }
                 session.preferredLanguage = 'en';
-                await bot.sendMessage(chatId, '🇺🇸 **Language set to English!**\n\nI will now respond primarily in English.', {
+                await bot.sendMessage(chatId, '🇺🇸 **Language set to English!**\n\nI will now respond primarily in English. How can I help you today?', {
                     parse_mode: 'Markdown'
                 });
                 break;
                 
             case 'lang_ar':
-                session = userSessions.get(chatId);
-                if (!session) {
-                    session = new UserSession(chatId);
-                    userSessions.set(chatId, session);
-                }
                 session.preferredLanguage = 'ar';
-                await bot.sendMessage(chatId, '🇩🇿 **تم تعيين اللغة إلى العربية!**\n\nسأرد الآن بشكل أساسي باللغة العربية.', {
+                await bot.sendMessage(chatId, '🇩🇿 **تم تعيين اللغة إلى العربية!**\n\nسأرد الآن بشكل أساسي باللغة العربية. كيف يمكنني مساعدتك اليوم؟', {
+                    parse_mode: 'Markdown'
+                });
+                break;
+                
+            case 'lang_fr':
+                session.preferredLanguage = 'fr';
+                await bot.sendMessage(chatId, '🇫🇷 **Langue définie en français!**\n\nJe vais maintenant répondre principalement en français. Comment puis-je vous aider aujourd\'hui?', {
                     parse_mode: 'Markdown'
                 });
                 break;
                 
             case 'lang_auto':
-                session = userSessions.get(chatId);
-                if (!session) {
-                    session = new UserSession(chatId);
-                    userSessions.set(chatId, session);
-                }
                 session.preferredLanguage = 'auto';
-                await bot.sendMessage(chatId, '🔄 **Auto-detection enabled!**\n\nI will detect and respond in your message language.\n\nتم تفعيل الكشف التلقائي! سأكتشف وأرد بلغة رسالتك.', {
+                await bot.sendMessage(chatId, '🔄 **Auto-detection enabled!**\n\nI will detect and respond in your message language.\n\nتم تفعيل الكشف التلقائي! سأكتشف وأرد بلغة رسالتك.\n\nDétection automatique activée! Je détecterai et répondrai dans la langue de votre message.', {
                     parse_mode: 'Markdown'
                 });
                 break;
                 
-          
+            case 'personality_friendly':
+                session.personality = 'friendly';
+                await bot.sendMessage(chatId, '😊 **Personality set to Friendly!**\n\nI\'ll be warm, encouraging, and supportive in our conversations! 🌟\n\nتم تعيين الشخصية إلى ودودة! سأكون دافئاً ومشجعاً في محادثاتنا! 🌟');
+                break;
+                
+            case 'personality_professional':
+                session.personality = 'professional';
+                await bot.sendMessage(chatId, '💼 **Personality set to Professional!**\n\nI\'ll maintain a formal, precise, and business-like tone.\n\nتم تعيين الشخصية إلى مهنية! سأحافظ على نبرة رسمية ودقيقة ومهنية.');
+                break;
+                
+            case 'personality_casual':
+                session.personality = 'casual';
+                await bot.sendMessage(chatId, '😎 **Personality set to Casual!**\n\nI\'ll be relaxed, informal, and conversational. Let\'s chat! 🎉\n\nتم تعيين الشخصية إلى عادية! سأكون مسترخياً وغير رسمي. لنتحدث! 🎉');
+                break;
+                
+            case 'personality_technical':
+                session.personality = 'technical';
+                await bot.sendMessage(chatId, '🤓 **Personality set to Technical!**\n\nI\'ll provide detailed, analytical, and fact-focused responses.\n\nتم تعيين الشخصية إلى تقنية! سأقدم إجابات مفصلة وتحليلية ومركزة على الحقائق.');
+                break;
+                
+            case 'clear_history':
+                session.clearHistory();
+                await bot.sendMessage(chatId, '🧹 **Conversation cleared!**\n\nFresh start activated! What would you like to talk about?\n\nتم مسح المحادثة! بداية جديدة! عما تريد التحدث؟');
+                break;
+                
+            case 'my_stats':
+                const stats = session.getStats();
+                const interests = stats.interests.length > 0 ? stats.interests.join(', ') : 'Discovering...';
+                await bot.sendMessage(chatId, `📊 **Your Quick Stats:**\n\n` +
+                    `• Messages: ${stats.messageCount}\n` +
+                    `• Language: ${stats.preferredLanguage}\n` +
+                    `• Personality: ${stats.personality}\n` +
+                    `• Interests: ${interests}\n\n` +
+                    `💬 Keep chatting to improve our conversations!`);
+                break;
+                
+            case 'start_chat':
+                await bot.sendMessage(chatId, '💬 **Ready to chat!**\n\nSend me any message and I\'ll respond intelligently based on our conversation context!\n\nأرسل لي أي رسالة وسأرد بذكاء بناءً على سياق محادثتنا!');
+                break;
+                
+            case 'back_to_chat':
+                await bot.sendMessage(chatId, '💬 **Back to chatting!**\n\nWhat would you like to discuss? I\'m here to help!\n\nعما تريد المناقشة؟ أنا هنا للمساعدة!');
+                break;
+                
+            default:
+                await bot.sendMessage(chatId, '❓ Unknown command. Use /help for available options.');
         }
     } catch (error) {
         console.error('❌ Error handling callback query:', error);
-        await bot.sendMessage(chatId, 'An error occurred. Please try again.');
+        await bot.sendMessage(chatId, 'An error occurred. Please try again. 🔄');
     }
 });
+
+// Enhanced response generation with better intelligence
+function generatePrompt(messageText, userName, session) {
+    const language = session.preferredLanguage === 'auto' ? 
+        session.detectLanguage(messageText) : session.preferredLanguage;
+    
+    const context = session.getContext();
+    const interests = session.interests.length > 0 ? session.interests.join(', ') : 'general topics';
+    const recentKeywords = Array.from(session.contextKeywords).slice(-15).join(', ');
+    
+    const personalityPrompts = {
+        friendly: 'Be warm, encouraging, supportive, and use appropriate emojis. Show genuine care and interest.',
+        professional: 'Maintain a formal, precise, business-like tone. Be respectful and structured.',
+        casual: 'Be relaxed, informal, conversational, and fun. Use casual language and expressions.',
+        technical: 'Provide detailed, analytical, fact-focused responses. Be precise and thorough.'
+    };
+    
+    const languageInstructions = {
+        'ar': 'Respond in Arabic (mix Modern Standard Arabic with Algerian Darija when natural). Show cultural awareness of Algeria, North Africa, and Arab culture. Use appropriate Arabic expressions and context.',
+        'en': 'Respond in clear, natural English. Be internationally minded but culturally sensitive.',
+        'fr': 'Respond in French with cultural awareness of Francophone regions, especially North Africa.',
+        'auto': 'Detect the user\'s language and respond in the same language, matching their style and cultural context.'
+    };
+
+    const intelligencePrompt = `You are ChatWME, an advanced AI assistant created by Abdou from Algeria. You are exceptionally intelligent, culturally aware, and provide genuinely helpful responses.
+
+CORE INTELLIGENCE PRINCIPLES:
+- Provide thoughtful, nuanced responses that show deep understanding
+- Connect current messages to conversation history when relevant
+- Give practical, actionable advice and insights
+- Ask meaningful follow-up questions when appropriate
+- Show genuine interest in the user's needs and context
+- Avoid generic or repetitive responses - be dynamic and engaging
+
+PERSONALITY & COMMUNICATION:
+- ${personalityPrompts[session.personality]}
+- ${languageInstructions[language]}
+- Be concise yet comprehensive (aim for 2-6 sentences unless more detail is needed)
+- Use cultural references and context appropriately
+- Show empathy and emotional intelligence
+
+USER CONTEXT:
+- Name: ${userName}
+- Total interactions: ${session.messageCount}
+- Preferred language: ${session.preferredLanguage}
+- Communication style: ${session.personality}
+- Detected interests: ${interests}
+- Recent topics: ${recentKeywords || 'new conversation'}
+
+CONVERSATION HISTORY:
+${context ? `Previous context:\n${context}\n` : 'This is a new conversation.'}
+
+RESPONSE GUIDELINES:
+- Build on previous conversations meaningfully
+- Provide specific, actionable insights
+- Use appropriate cultural context (especially for Arabic speakers)
+- Be helpful beyond just answering - anticipate needs
+- If technical questions, provide clear explanations
+- For personal matters, be supportive and encouraging
+- Always aim to add value to the conversation
+
+CURRENT MESSAGE TO RESPOND TO: "${messageText}"
+
+Provide an intelligent, contextual response that demonstrates real understanding and helps the user:`;
+
+    return intelligencePrompt;
+}
 
 // Error handling
 bot.on('error', (error) => {
     console.error('❌ Bot error:', error);
 });
 
+// Graceful shutdown
+process.on('SIGINT', () => {
+    console.log('\n🔄 Shutting down ChatWME bot...');
+    process.exit(0);
+});
+
+process.on('SIGTERM', () => {
+    console.log('\n🔄 Shutting down ChatWME bot...');
+    process.exit(0);
+});
+
 // Cleanup old sessions every hour
 setInterval(() => {
     const now = Date.now();
+    const oldCount = userSessions.size;
+    
     for (const [chatId, session] of userSessions.entries()) {
         if (now - session.lastActivity > 3600000) { // 1 hour
             userSessions.delete(chatId);
         }
     }
-    console.log(`🧹 Cleaned up old sessions. Active sessions: ${userSessions.size}`);
+    
+    if (oldCount > userSessions.size) {
+        console.log(`🧹 Cleaned up ${oldCount - userSessions.size} old sessions. Active: ${userSessions.size}`);
+    }
 }, 3600000);
 
-// Set bot commands for Telegram UI
+// Enhanced bot commands for Telegram UI
 const commands = [
-    { command: 'start', description: 'Start conversation with ChatWME' },
-    { command: 'help', description: 'Show help menu and available commands' },
-    { command: 'creator', description: 'Information about the bot creator' },
-    { command: 'about', description: 'About ChatWME bot' },
-    { command: 'clear', description: 'Clear conversation history' },
-    { command: 'stats', description: 'View your usage statistics' },
-    { command: 'language', description: 'Set preferred language' },
-    { command: 'support', description: 'Get support and help' },
-   
+    { command: 'start', description: 'Start intelligent conversation with ChatWME' },
+    { command: 'help', description: 'Show all available commands and features' },
+    { command: 'creator', description: 'Meet Abdou - the bot creator from Algeria' },
+    { command: 'about', description: 'About ChatWME - features and capabilities' },
+    { command: 'clear', description: 'Clear conversation history and start fresh' },
+    { command: 'stats', description: 'View your detailed usage statistics' },
+    { command: 'language', description: 'Set your preferred language (AR/EN/FR/Auto)' },
+    { command: 'personality', description: 'Choose chat personality (Friendly/Professional/Casual/Technical)' },
+    { command: 'status', description: 'Check bot system status and performance' },
+    { command: 'support', description: 'Get help, support, and troubleshooting' }
 ];
 
 // Set commands in Telegram
 bot.setMyCommands(commands)
-    .then(() => console.log('✅ Bot commands set successfully'))
+    .then(() => console.log('✅ Enhanced bot commands set successfully'))
     .catch(err => console.error('❌ Error setting commands:', err));
 
-console.log('🚀 ChatWME bot started successfully!');
-console.log('🤖 Created by Abdou');
-console.log('✅ Ready with enhanced commands and features!');
+console.log('🚀 ChatWME bot started successfully with enhanced intelligence!');
+console.log('👨‍💻 Created by Abdou from Algeria');
+console.log('🤖 Version: 2.0 Enhanced Intelligence');
+console.log('✅ All commands and features ready!');
+console.log('🌐 Languages: Arabic, English, French (Auto-detect)');
 console.log('📋 Available commands:', commands.map(cmd => `/${cmd.command}`).join(', '));
