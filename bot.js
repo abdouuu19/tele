@@ -228,19 +228,6 @@ async function handleTextMessage(chatId, messageText, userName, messageId) {
             return;
         }
         
-        // Handle feedback messages
-        if (messageText.toLowerCase().startsWith('feedback:')) {
-            const userName = messageText.from?.first_name || 'User';
-            const feedback = messageText.substring(9).trim();
-            
-            // Log feedback
-            console.log(`📝 Feedback from ${userName} (${chatId}): ${feedback}`);
-            
-            await bot.sendMessage(chatId, `✅ **Thank you for your feedback!**\n\nYour message has been received and will help improve ChatWME.\n\nشكراً لك على ملاحظاتك! تم استلام رسالتك وستساعد في تحسين ChatWME.`, {
-                parse_mode: 'Markdown'
-            });
-            return;
-        }
         
         // Generate prompt and get response
         const prompt = generatePrompt(messageText, userName, session);
@@ -324,22 +311,8 @@ bot.onText(/\/help/, async (msg) => {
                        `• /clear - Clear conversation history\n` +
                        `• /stats - Your usage statistics\n` +
                        `• /language - Set preferred language\n` +
-                       `• /tips - Usage tips and tricks\n` +
                        `• /support - Get support\n` +
-                       `• /feedback - Send feedback\n\n` +
-                       `**✨ What I can do:**\n` +
-                       `✅ Chat in Arabic and English\n` +
-                       `✅ Remember conversation context\n` +
-                       `✅ Understand Algerian Darija\n` +
-                       `✅ Answer questions on various topics\n` +
-                       `✅ Help with translations\n` +
-                       `✅ Provide explanations and assistance\n\n` +
-                       `**💡 Tips:**\n` +
-                       `• Write in any language I support\n` +
-                       `• Ask me anything!\n` +
-                       `• I'll respond in your language\n` +
-                       `• Use /clear to reset our conversation`;
-    
+                     
     await bot.sendMessage(chatId, helpMessage, { parse_mode: 'Markdown' });
 });
 
@@ -349,12 +322,8 @@ bot.onText(/\/creator/, async (msg) => {
     
     const creatorMessage = `👨‍💻 **Creator Information**\n\n` +
                           `**Name:** Abdou\n` +
-                          `**Bot:** ChatWME\n` +
-                          `**Skills:** AI Development, Telegram Bots\n` +
+                          `**Skills:** Web Development, Bots, App Developement\n` +
                           `**Location:** Algeria 🇩🇿\n` +
-                          `**Specialty:** Building intelligent conversational bots\n\n` +
-                          `💪 **Abdou's Vision:**\n` +
-                          `Creating AI assistants that understand and serve the Arabic-speaking community, especially Algerians.\n\n` +
                           `🔗 **Connect with Abdou:**`;
     
     await bot.sendMessage(chatId, creatorMessage, {
@@ -362,7 +331,7 @@ bot.onText(/\/creator/, async (msg) => {
         reply_markup: {
             inline_keyboard: [
                 [{ text: '📘 Visit Facebook', url: 'https://www.facebook.com/abdou.tsu.446062' }],
-                [{ text: '💬 Chat with Creator', callback_data: 'contact_creator' }]
+                [{ text: '💬 Chat with Creator', url: 't.me/Uknowmeabdou' }]
             ]
         }
     });
@@ -375,18 +344,15 @@ bot.onText(/\/about/, async (msg) => {
     const aboutMessage = `🤖 **About ChatWME**\n\n` +
                         `**Version:** 1.0\n` +
                         `**Created by:** Abdou\n` +
-                        `**Language Support:** Arabic, English, Algerian Darija\n` +
-                        `**AI Model:** Google Gemini 1.5 Flash\n\n` +
+                        `**Language Support:** All\n` +
                         `**🎯 Purpose:**\n` +
                         `ChatWME is designed to provide intelligent conversation assistance in both Arabic and English, with special focus on Algerian culture and dialect.\n\n` +
                         `**🌟 Features:**\n` +
-                        `• Bilingual conversation support\n` +
+                        `• Multiple conversation support\n` +
                         `• Context-aware responses\n` +
                         `• Cultural sensitivity\n` +
                         `• Fast and reliable responses\n` +
                         `• User-friendly interface\n\n` +
-                        `**🚀 Technology:**\n` +
-                        `Built with Node.js, powered by Google Gemini AI, and hosted on Railway for 24/7 availability.`;
     
     await bot.sendMessage(chatId, aboutMessage, { parse_mode: 'Markdown' });
 });
@@ -446,30 +412,7 @@ bot.onText(/\/language/, async (msg) => {
     });
 });
 
-// Tips command
-bot.onText(/\/tips/, async (msg) => {
-    const chatId = msg.chat.id;
-    
-    const tipsMessage = `💡 **ChatWME Usage Tips**\n\n` +
-                       `**🗣️ Language Tips:**\n` +
-                       `• I understand both Arabic and English\n` +
-                       `• You can mix languages in one message\n` +
-                       `• I recognize Algerian Darija expressions\n\n` +
-                       `**💬 Conversation Tips:**\n` +
-                       `• Be specific in your questions\n` +
-                       `• I remember our last 6 messages\n` +
-                       `• Use /clear to reset conversation\n\n` +
-                       `**⚡ Performance Tips:**\n` +
-                       `• I respond faster to shorter messages\n` +
-                       `• One question at a time works best\n` +
-                       `• Use commands for specific functions\n\n` +
-                       `**🎯 Best Practices:**\n` +
-                       `• Ask follow-up questions\n` +
-                       `• Provide context when needed\n` +
-                       `• Use /help if you're stuck`;
-    
-    await bot.sendMessage(chatId, tipsMessage, { parse_mode: 'Markdown' });
-});
+
 
 // Support command
 bot.onText(/\/support/, async (msg) => {
@@ -479,8 +422,7 @@ bot.onText(/\/support/, async (msg) => {
                           `**Need Help?**\n` +
                           `If you're experiencing issues or need assistance:\n\n` +
                           `**📧 Contact Methods:**\n` +
-                          `• Use /feedback to report issues\n` +
-                          `• Contact creator directly via Facebook\n` +
+                          `• Contact creator directly via Facebook/Telegram\n` +
                           `• Use /help for command assistance\n\n` +
                           `**🔧 Common Issues:**\n` +
                           `• Bot not responding: Wait a moment and try again\n` +
@@ -488,46 +430,19 @@ bot.onText(/\/support/, async (msg) => {
                           `• Conversation issues: Use /clear to reset\n\n` +
                           `**⏰ Response Time:**\n` +
                           `Usually within a few seconds. If delayed, please wait or try again.\n\n` +
-                          `**🤝 Community Support:**\n` +
-                          `Connect with other users and the creator on Facebook!`;
-    
+                          
     await bot.sendMessage(chatId, supportMessage, {
         parse_mode: 'Markdown',
         reply_markup: {
             inline_keyboard: [
-                [{ text: '📧 Send Feedback', callback_data: 'send_feedback' }],
+                [{ text: '📧 Send Feedback', url: 't.me/Uknowmeabdou' }],
                 [{ text: '👤 Contact Creator', url: 'https://www.facebook.com/abdou.tsu.446062' }]
             ]
         }
     });
 });
 
-// Feedback command
-bot.onText(/\/feedback/, async (msg) => {
-    const chatId = msg.chat.id;
-    
-    const feedbackMessage = `📝 **Send Feedback**\n\n` +
-                           `**Your feedback helps improve ChatWME!**\n\n` +
-                           `**How to send feedback:**\n` +
-                           `Simply type your message starting with "Feedback:" followed by your comments.\n\n` +
-                           `**Example:**\n` +
-                           `Feedback: The bot is great but could be faster\n\n` +
-                           `**What to include:**\n` +
-                           `• Bug reports\n` +
-                           `• Feature suggestions\n` +
-                           `• General comments\n` +
-                           `• Language improvements\n\n` +
-                           `**🙏 Thank you for helping make ChatWME better!**`;
-    
-    await bot.sendMessage(chatId, feedbackMessage, {
-        parse_mode: 'Markdown',
-        reply_markup: {
-            inline_keyboard: [
-                [{ text: '👤 Contact Creator Directly', url: 'https://www.facebook.com/abdou.tsu.446062' }]
-            ]
-        }
-    });
-});
+
 
 // Handle callback queries
 bot.on('callback_query', async (callbackQuery) => {
@@ -582,9 +497,7 @@ bot.on('callback_query', async (callbackQuery) => {
                 });
                 break;
                 
-            case 'send_feedback':
-                await bot.sendMessage(chatId, 'Please send your feedback by typing: "Feedback: [your message]"');
-                break;
+          
         }
     } catch (error) {
         console.error('❌ Error handling callback query:', error);
@@ -617,9 +530,8 @@ const commands = [
     { command: 'clear', description: 'Clear conversation history' },
     { command: 'stats', description: 'View your usage statistics' },
     { command: 'language', description: 'Set preferred language' },
-    { command: 'tips', description: 'Usage tips and tricks' },
     { command: 'support', description: 'Get support and help' },
-    { command: 'feedback', description: 'Send feedback to improve the bot' }
+   
 ];
 
 // Set commands in Telegram
