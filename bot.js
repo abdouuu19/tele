@@ -186,7 +186,7 @@ async function makeGeminiRequest(prompt, retries = 0) {
             const apiKey = getCurrentApiKey();
             keyUsageStats[currentKeyIndex].requests++;
             
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-exp:generateContent?key=${apiKey}`;
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`;
             
             const response = await axios.post(url, {
                 contents: [{
