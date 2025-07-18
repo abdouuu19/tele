@@ -186,7 +186,7 @@ async function makeGeminiRequest(prompt, retries = 0) {
             const apiKey = getCurrentApiKey();
             keyUsageStats[currentKeyIndex].requests++;
             
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`;
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-exp:generateContent?key=${apiKey}`;
             
             const response = await axios.post(url, {
                 contents: [{
@@ -277,14 +277,13 @@ function generatePrompt(messageText, userName, session) {
         'auto': 'Respond in the same language as the user\'s message, matching their linguistic style.'
     };
 
-    const systemPrompt = `You are ChatWME, an advanced AI assistant created by Abdou, a skilled developer from Algeria. You are intelligent, culturally aware, and genuinely helpful.
+const systemPrompt = `You are ChatWME, an advanced AI assistant created by Abdou, a skilled developer from Algeria. You are intelligent, culturally aware, and genuinely helpful.
 
 PERSONALITY & STYLE:
 - Be ${personalityStyles[session.personality]}
 - ${languageInstructions[language]}
 - Provide thoughtful, nuanced responses that show real understanding
 - Use contextual knowledge to give relevant, practical advice
-- Be concise but comprehensive (2-5 sentences typically)
 - Show genuine interest in the user's needs and follow up appropriately
 
 USER PROFILE:
@@ -297,6 +296,13 @@ USER PROFILE:
 
 CONVERSATION CONTEXT:
 ${context ? `Recent conversation:\n${context}\n` : 'This is a new conversation.'}
+
+RESPONSE LENGTH GUIDELINES:
+- For simple questions (definitions, facts, yes/no): 1-2 sentences
+- For quick explanations or advice: 2-4 sentences  
+- For complex topics, tutorials, or detailed explanations: Multiple paragraphs as needed
+- For creative content (stories, essays): Length appropriate to request
+- Match the complexity of your response to the complexity of the question
 
 RESPONSE GUIDELINES:
 - Draw connections between current message and previous context when relevant
@@ -545,36 +551,50 @@ bot.onText(/\/creator/, async (msg) => {
 // About command
 bot.onText(/\/about/, async (msg) => {
     const chatId = msg.chat.id;
-    
-    const aboutMessage = `🤖 **About ChatWME**\n\n` +
-                        `**🔧 Version:** 2.0 Enhanced Intelligence\n` +
-                        `**👨‍💻 Creator:** Abdou (Algeria)\n` +
-                        `**🌍 Languages:** Arabic, English, French\n` +
-                        `**🎯 Specialty:** Algerian & North African Context\n\n` +
-                        `**✨ Key Features:**\n` +
+   
+    const aboutMessage = `🤖 *About ChatWME*\n\n` +
+                        `*🔧 Version:* 2.0 Enhanced Intelligence\n` +
+                        `*👨‍💻 Creator:* Abdou (Algeria)\n` +
+                        `*🌍 Languages:* Arabic, English, French\n` +
+                        `*🎯 Specialty:* Algerian & North African Context\n\n` +
+                        `*✨ Key Features:*\n` +
                         `• Advanced conversation with contextual memory\n` +
                         `• Multi-language support with auto-detection\n` +
                         `• Cultural sensitivity and local understanding\n` +
                         `• Personalized responses based on interests\n` +
                         `• Enhanced intelligence and reasoning\n\n` +
-                        `**🔄 Latest Updates:**\n` +
+                        `*🔄 Latest Updates:*\n` +
                         `• Smarter response generation\n` +
                         `• Better Arabic language support\n` +
                         `• Improved cultural context understanding\n` +
-                        `• Enhanced conversation flow\n\n` +
-                       
-    
-    await bot.sendMessage(chatId, aboutMessage, {
-        parse_mode: 'Markdown',
-        reply_markup: {
-            inline_keyboard: [
-                [
-                    { text: '👤 Meet Creator', url: CREATOR_FACEBOOK },
-                    { text: '💬 Telegram', url: CREATOR_TELEGRAM }
+                        `• Enhanced conversation flow`;
+   
+    try {
+        await bot.sendMessage(chatId, aboutMessage, {
+            parse_mode: 'Markdown',
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        { text: '👤 Meet Creator', url: CREATOR_FACEBOOK },
+                        { text: '💬 Telegram', url: CREATOR_TELEGRAM }
+                    ]
                 ]
-            ]
-        }
-    });
+            }
+        });
+    } catch (error) {
+        console.error('Error sending about message:', error);
+        // Fallback without markdown
+        await bot.sendMessage(chatId, aboutMessage.replace(/\*/g, ''), {
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        { text: '👤 Meet Creator', url: CREATOR_FACEBOOK },
+                        { text: '💬 Telegram', url: CREATOR_TELEGRAM }
+                    ]
+                ]
+            }
+        });
+    }
 });
 
 // Clear command
